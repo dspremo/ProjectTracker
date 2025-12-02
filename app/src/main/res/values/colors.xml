@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Braon nijanse -->
+    <color name="brown_darkest">#3E2723</color>
+    <color name="brown_dark">#4E342E</color>
+    <color name="brown_primary">#6D4C41</color>
+    <color name="brown_light">#8D6E63</color>
+    <color name="brown_lighter">#A1887F</color>
+    <color name="brown_lightest">#BCAAA4</color>
+
+    <!-- Zlatne nijanse -->
+    <color name="gold_dark">#B8860B</color>
+    <color name="gold_primary">#DAA520</color>
+    <color name="gold_light">#FFD700</color>
+    <color name="gold_bright">#FFC107</color>
+
+    <!-- Površine i pozadine -->
+    <color name="surface_dark">#1C1410</color>
+    <color name="surface">#2D1E18</color>
+    <color name="surface_light">#3E2A20</color>
+
+    <!-- Tekstovi -->
+    <color name="text_primary">#F5E6D3</color>
+    <color name="text_secondary">#D7C4B0</color>
+    <color name="text_disabled">#9E8B7B</color>
+
+    <!-- Status boje -->
+    <color name="success">#4CAF50</color>
+    <color name="warning">#FF9800</color>
+    <color name="error">#F44336</color>
+
+    <!-- Transparentne - za glassmorphism -->
+    <color name="glass_brown">#80A1887F</color>
+    <color name="glass_gold">#80FFD700</color>
+</resources>
