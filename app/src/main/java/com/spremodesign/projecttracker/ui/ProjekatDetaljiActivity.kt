@@ -39,6 +39,9 @@ import com.example.projecttracker.utils.ExcelExporter
 import com.spremodesign.projecttracker.ui.DodajSateDialog
 import com.spremodesign.projecttracker.ui.DodajTrosakDialog
 import com.spremodesign.projecttracker.ui.DodajUplatuDialog
+import com.spremodesign.projecttracker.ui.EditSateDialog
+import com.spremodesign.projecttracker.ui.EditTrosakDialog
+import com.spremodesign.projecttracker.ui.EditUplatuDialog
 import com.spremodesign.projecttracker.ui.EmptyState
 import kotlinx.coroutines.launch
 import org.burnoutcrew.reorderable.*
@@ -121,6 +124,43 @@ fun ProjekatDetaljiScreen(
             projekatId
         )
     )
+    var editingSat by remember { mutableStateOf<RadniSat?>(null) }
+    var editingTrosak by remember { mutableStateOf<Trosak?>(null) }
+    var editingUplata by remember { mutableStateOf<Uplata?>(null) }
+
+    editingSat?.let { sat ->
+        EditSateDialog(
+            sat = sat,
+            onDismiss = { editingSat = null },
+            onSave = { brojSati, opis, datum ->
+                viewModel.azurirajSate(sat, brojSati, opis, datum)
+                editingSat = null
+            }
+        )
+    }
+
+    editingTrosak?.let { trosak ->
+        EditTrosakDialog(
+            trosak = trosak,
+            onDismiss = { editingTrosak = null },
+            onPickImage = onPickImage,
+            onSave = { iznos, opis, kategorija, datum ->
+                viewModel.azurirajTrosak(trosak, iznos, opis, kategorija, trosak.putanjaDoSlike, datum)
+                editingTrosak = null
+            }
+        )
+    }
+
+    editingUplata?.let { uplata ->
+        EditUplatuDialog(
+            uplata = uplata,
+            onDismiss = { editingUplata = null },
+            onSave = { iznos, opis, datum ->
+                viewModel.azurirajUplatu(uplata, iznos, opis, datum)
+                editingUplata = null
+            }
+        )
+    }
 
     val projekat by viewModel.projekat.collectAsState()
     val sati by viewModel.sati.collectAsState()
@@ -174,6 +214,7 @@ fun ProjekatDetaljiScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+
             // Statistika kartice
             StatistikaCards(stats)
 
@@ -212,20 +253,20 @@ fun ProjekatDetaljiScreen(
                 0 -> SatiTab(
                     sati = sati,
                     onAdd = { showDialog = "sati" },
-                    onEdit = { /* TODO */ },
+                    { sat -> editingSat = sat },
                     onDelete = { viewModel.obrisiSat(it) }
                 )
                 1 -> TroskoviTab(
                     troskovi = troskovi,
                     onAdd = { showDialog = "trosak" },
-                    onEdit = { /* TODO */ },
+                    onEdit = { trosak -> editingTrosak = trosak },
                     onDelete = { viewModel.obrisiTrosak(it) },
                     onImageClick = { /* TODO */ }
                 )
                 2 -> UplateTab(
                     uplate = uplate,
                     onAdd = { showDialog = "uplata" },
-                    onEdit = { /* TODO */ },
+                    onEdit = { uplata -> editingUplata = uplata },
                     onDelete = { viewModel.obrisiUplatu(it) }
                 )
             }
@@ -390,6 +431,53 @@ fun SatiTab(
             contentColor = SurfaceDark
         ) {
             Icon(Icons.Default.Add, "Dodaj")
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DatePickerField(
+    selectedDate: Long,
+    onDateSelected: (Long) -> Unit
+) {
+    val dateFormatter = remember { SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()) }
+
+    var openDialog by remember { mutableStateOf(false) }
+
+    OutlinedTextField(
+        value = dateFormatter.format(Date(selectedDate)),
+        onValueChange = {},
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { openDialog = true },
+        label = { Text("Datum") },
+        readOnly = true,
+        trailingIcon = {
+            Icon(Icons.Default.CalendarMonth, contentDescription = null)
+        }
+    )
+
+    if (openDialog) {
+        DatePickerDialog(
+            onDismissRequest = { openDialog = false },
+            confirmButton = {
+                TextButton(onClick = { openDialog = false }) {
+                    Text("OK")
+                }
+            }
+        ) {
+            val state = rememberDatePickerState(initialSelectedDateMillis = selectedDate)
+
+            DatePicker(
+                state = state
+            )
+
+            LaunchedEffect(state.selectedDateMillis) {
+                state.selectedDateMillis?.let {
+                    onDateSelected(it)
+                }
+            }
         }
     }
 }

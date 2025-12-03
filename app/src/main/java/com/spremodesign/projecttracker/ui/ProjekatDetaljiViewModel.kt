@@ -140,6 +140,70 @@ class ProjekatDetaljiViewModel(
             database.projekatDao().obrisiUplatu(uplata)
         }
     }
+
+
+    fun azurirajSate(sat: RadniSat, brojSati: Double, opis: String, datum: Long) {
+        viewModelScope.launch {
+            val azuriranSat = sat.copy(
+                brojSati = brojSati,
+                opis = opis,
+                datum = datum
+            )
+            database.projekatDao().azurirajRadniSat(azuriranSat)
+        }
+    }
+
+    fun azurirajTrosak(
+        trosak: Trosak,
+        iznos: Double,
+        opis: String,
+        kategorija: String,
+        putanjaDoSlike: String?,
+        datum: Long
+    ) {
+        viewModelScope.launch {
+            val azuriranTrosak = trosak.copy(
+                iznos = iznos,
+                opis = opis,
+                kategorija = kategorija,
+                putanjaDoSlike = putanjaDoSlike,
+                datum = datum
+            )
+            database.projekatDao().azurirajTrosak(azuriranTrosak)
+        }
+    }
+
+    fun azurirajUplatu(uplata: Uplata, iznos: Double, opis: String, datum: Long) {
+        viewModelScope.launch {
+            val azuriranUplata = uplata.copy(
+                iznos = iznos,
+                opis = opis,
+                datum = datum
+            )
+            database.projekatDao().azurirajUplatu(azuriranUplata)
+        }
+    }
+
+    fun azurirajProjekat(
+        naziv: String,
+        klijent: String,
+        dogovorenaSuma: Double,
+        opis: String,
+        aktivan: Boolean
+    ) {
+        viewModelScope.launch {
+            projekat.value?.let { proj ->
+                val azuriranProjekat = proj.copy(
+                    naziv = naziv,
+                    klijent = klijent,
+                    dogovorenaSuma = dogovorenaSuma,
+                    opis = opis,
+                    aktivan = aktivan
+                )
+                database.projekatDao().azurirajProjekat(azuriranProjekat)
+            }
+        }
+    }
 }
 
 class ProjekatDetaljiViewModelFactory(
