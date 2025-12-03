@@ -17,4 +17,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             database.projekatDao().dodajProjekat(projekat)
         }
     }
+
+    fun azurirajProjekat(projekat: Projekat) {
+        viewModelScope.launch {
+            database.projekatDao().azurirajProjekat(projekat)
+        }
+    }
 }

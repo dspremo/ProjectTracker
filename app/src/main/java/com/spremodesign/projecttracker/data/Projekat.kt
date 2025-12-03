@@ -12,7 +12,7 @@ data class Projekat(
     val datumPocetka: Long,
     val dogovorenaSuma: Double, // NOVA - umesto satnice
     val opis: String = "",
-    val aktivan: Boolean = true,
+    val aktivan: Boolean = false,
     val sortOrder: Int = 0 // Za custom sortiranje
 )
 

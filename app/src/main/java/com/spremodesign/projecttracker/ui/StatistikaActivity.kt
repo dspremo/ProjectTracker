@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,10 +22,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.projecttracker.data.Projekat
 import com.example.projecttracker.ui.theme.*
 import com.kizitonwose.calendar.compose.HorizontalCalendar
 import com.kizitonwose.calendar.compose.rememberCalendarState
 import com.kizitonwose.calendar.core.*
+import com.spremodesign.projecttracker.ui.StatistikaUiState
+import com.spremodesign.projecttracker.ui.StatistikaViewModel
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.time.*
@@ -35,19 +40,23 @@ class StatistikaActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            ProjectTrackerTheme {
-                StatistikaScreen(
-                    onBack = { finish() }
-                )
-            }
+            val viewModel: StatistikaViewModel = viewModel()
+            StatistikaScreen(
+                onBack = { finish() },
+                viewModel = viewModel
+            )
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StatistikaScreen(onBack: () -> Unit) {
+fun StatistikaScreen(
+    onBack: () -> Unit,
+    viewModel: StatistikaViewModel
+) {
     var selectedMode by remember { mutableStateOf(0) } // 0 = Po projektu, 1 = Po mesecu
+    val uiState by viewModel.uiState.collectAsState()
 
     Scaffold(
         topBar = {
@@ -61,7 +70,7 @@ fun StatistikaScreen(onBack: () -> Unit) {
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Nazad")
+                        Icon(Icons.Default.ArrowBack, "Nazad", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -84,9 +93,334 @@ fun StatistikaScreen(onBack: () -> Unit) {
             )
 
             when (selectedMode) {
-                0 -> StatistikaPoProjetkuScreen()
-                1 -> StatistikaPoMesecuScreen()
+                0 -> StatistikaPoProjetkuScreen(
+                    uiState = uiState,
+                    onProjectClick = { viewModel.onProjectSelected(it) },
+                    onDateSelected = { viewModel.onDateSelected(it) }
+                )
+
+                1 -> StatistikaPoMesecuScreen(
+                    uiState = uiState
+                )
             }
+        }
+    }
+}
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun StatistikaPoProjetkuScreen(
+    uiState: StatistikaUiState,
+    onProjectClick: (Projekat) -> Unit,
+    onDateSelected: (LocalDate) -> Unit
+) {
+    val currencyFormat = remember { NumberFormat.getCurrencyInstance(Locale("sr", "RS")) }
+    var showProjectPicker by remember { mutableStateOf(false) }
+
+    // ----- BOTTOM SHEET ZA PROJEKTE -----
+    if (showProjectPicker) {
+        ModalBottomSheet(
+            onDismissRequest = { showProjectPicker = false },
+            containerColor = Surface,
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            Text(
+                text = "Izaberi projekat",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (uiState.projekti.isEmpty()) {
+                Text(
+                    text = "Nema projekata.",
+                    color = TextDisabled,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(bottom = 32.dp)
+                ) {
+                    items(uiState.projekti) { projekat ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onProjectClick(projekat)
+                                    showProjectPicker = false
+                                }
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = projekat.naziv,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary
+                                )
+                                projekat.klijent?.takeIf { it.isNotBlank() }?.let { klijent ->
+                                    Text(
+                                        text = klijent,
+                                        fontSize = 13.sp,
+                                        color = TextDisabled
+                                    )
+                                }
+                            }
+                            if (uiState.selectedProject?.id == projekat.id) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = GoldPrimary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // ----- /BOTTOM SHEET -----
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        // Projekat selector
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Surface),
+            onClick = {
+                if (uiState.projekti.isNotEmpty()) {
+                    showProjectPicker = true
+                }
+            }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = uiState.selectedProject?.naziv ?: "Izaberi projekat",
+                    fontSize = 16.sp,
+                    color = TextPrimary
+                )
+                Icon(
+                    Icons.Default.ArrowDropDown,
+                    contentDescription = null,
+                    tint = GoldPrimary
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Calendar view
+        CalendarView(
+            selectedDate = uiState.selectedDate,
+            daysWithWork = uiState.daysWithWork,
+            onDateSelected = onDateSelected
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Stats cards
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            MiniStatCard(
+                label = "Ukupno sati",
+                value = String.format("%.1fh", uiState.projectDayHours),
+                color = BrownLight,
+                modifier = Modifier.weight(1f)
+            )
+            MiniStatCard(
+                label = "Zarada (neto)",
+                value = currencyFormat.format(uiState.projectDayIncome - uiState.projectDayCosts),
+                color = Color(0xFF4CAF50),
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+
+@Composable
+fun CalendarView(
+    selectedDate: LocalDate,
+    daysWithWork: Set<LocalDate>,
+    onDateSelected: (LocalDate) -> Unit
+) {
+    val currentMonth = remember { YearMonth.now() }
+    val startMonth = remember { currentMonth.minusMonths(12) }
+    val endMonth = remember { currentMonth.plusMonths(12) }
+
+    val state = rememberCalendarState(
+        startMonth = startMonth,
+        endMonth = endMonth,
+        firstVisibleMonth = currentMonth,
+        firstDayOfWeek = DayOfWeek.MONDAY
+    )
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Surface)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            HorizontalCalendar(
+                state = state,
+                dayContent = { day ->
+                    Day(
+                        day = day,
+                        isSelected = day.date == selectedDate,
+                        hasWork = daysWithWork.contains(day.date),
+                        onClick = { onDateSelected(day.date) }
+                    )
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun Day(
+    day: CalendarDay,
+    isSelected: Boolean,
+    hasWork: Boolean,
+    onClick: () -> Unit
+) {
+    val bgColor = when {
+        isSelected -> GoldPrimary
+        hasWork -> GoldPrimary.copy(alpha = 0.3f)
+        else -> Color.Transparent
+    }
+
+    val textColor = when {
+        isSelected -> SurfaceDark
+        hasWork -> GoldPrimary
+        else -> TextSecondary
+    }
+
+    Box(
+        modifier = Modifier
+            .aspectRatio(1f)
+            .padding(4.dp)
+            .clip(CircleShape)
+            .background(bgColor)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = day.date.dayOfMonth.toString(),
+            fontSize = 12.sp,
+            color = textColor,
+            fontWeight = if (hasWork || isSelected) FontWeight.Bold else FontWeight.Normal
+        )
+    }
+}
+
+@Composable
+fun StatistikaPoMesecuScreen(
+    uiState: StatistikaUiState
+) {
+    val currentMonth = uiState.selectedMonth
+    val currencyFormat = remember { NumberFormat.getCurrencyInstance(Locale("sr", "RS")) }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Month summary card
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Surface)
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp)
+                ) {
+                    Text(
+                        text = currentMonth.month.getDisplayName(TextStyle.FULL, Locale("sr")),
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GoldPrimary
+                    )
+                    Text(
+                        text = currentMonth.year.toString(),
+                        fontSize = 14.sp,
+                        color = TextDisabled
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    MetricRow(
+                        label = "Ukupno sati",
+                        value = String.format("%.1fh", uiState.monthHours),
+                        icon = Icons.Default.Schedule,
+                        color = BrownLight
+                    )
+                    MetricRow(
+                        label = "Ukupne uplate",
+                        value = currencyFormat.format(uiState.monthIncome),
+                        icon = Icons.Default.TrendingUp,
+                        color = Color(0xFF4CAF50)
+                    )
+                    MetricRow(
+                        label = "Ukupni troškovi",
+                        value = currencyFormat.format(uiState.monthCosts),
+                        icon = Icons.Default.TrendingDown,
+                        color = Color(0xFFFF5722)
+                    )
+
+                    Divider(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        color = BrownLight.copy(alpha = 0.3f)
+                    )
+
+                    MetricRow(
+                        label = "Neto zarada",
+                        value = currencyFormat.format(uiState.monthNet),
+                        icon = Icons.Default.Paid,
+                        color = GoldPrimary,
+                        isTotal = true
+                    )
+                }
+            }
+        }
+
+        // Projekti ovog meseca
+        item {
+            Text(
+                text = "Projekti ovog meseca",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+        }
+
+        items(uiState.monthProjects) { stat ->
+            MonthProjectCard(
+                projectName = stat.projekat.naziv,
+                hours = stat.hours,
+                earnings = stat.earnings
+            )
         }
     }
 }
@@ -125,68 +459,6 @@ fun SegmentedButton(
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             }
-        }
-    }
-}
-
-@Composable
-fun StatistikaPoProjetkuScreen() {
-    // TODO: Implementacija sa calendar view i odabirom projekta
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        // Projekat selector
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Surface)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Izaberi projekat",
-                    fontSize = 16.sp,
-                    color = TextPrimary
-                )
-                Icon(
-                    Icons.Default.ArrowDropDown,
-                    contentDescription = null,
-                    tint = GoldPrimary
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Calendar view
-        CalendarView()
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Stats cards
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            MiniStatCard(
-                label = "Ukupno sati",
-                value = "125.5h",
-                color = BrownLight,
-                modifier = Modifier.weight(1f)
-            )
-            MiniStatCard(
-                label = "Zarada",
-                value = "250,000",
-                color = Color(0xFF4CAF50),
-                modifier = Modifier.weight(1f)
-            )
         }
     }
 }

@@ -27,6 +27,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.projecttracker.data.AppDatabase
 import com.example.projecttracker.data.Projekat
 import com.example.projecttracker.ui.theme.*
+import com.spremodesign.projecttracker.ui.EditProjekatDialog
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
@@ -79,13 +80,13 @@ fun MainScreen(
                 ) {
                     Column {
                         Text(
-                            text = "Projekti",
+                            text = "Spremo Design",
                             fontSize = 28.sp,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary
                         )
                         Text(
-                            text = "Drvo & Zanat",
+                            text = "Pracenje Projekata",
                             fontSize = 14.sp,
                             color = GoldPrimary
                         )
@@ -172,7 +173,9 @@ fun MainScreen(
                 items(projekti, key = { it.id }) { projekat ->
                     FuturisticProjekatCard(
                         projekat = projekat,
-                        onClick = { onProjekatClick(projekat) }
+                        onClick = { onProjekatClick(projekat) },
+                        onEdit = { updated ->
+                            viewModel.azurirajProjekat(updated)                        }
                     )
                 }
             }
@@ -189,12 +192,25 @@ fun MainScreen(
         )
     }
 }
-
 @Composable
 fun FuturisticProjekatCard(
     projekat: Projekat,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onEdit: (Projekat) -> Unit
 ) {
+    var showEditDialog by remember { mutableStateOf(false) }
+
+    if (showEditDialog) {
+        EditProjekatDialog(
+            projekat = projekat,
+            onDismiss = { showEditDialog = false },
+            onSave = { updated ->
+                onEdit(updated)
+                showEditDialog = false
+            }
+        )
+    }
+
     val dateFormat = remember { SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()) }
     val currencyFormat = remember { NumberFormat.getCurrencyInstance(Locale("sr", "RS")) }
 
@@ -212,7 +228,6 @@ fun FuturisticProjekatCard(
         )
     ) {
         Box {
-            // Zlatni akcent na vrhu
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -247,27 +262,38 @@ fun FuturisticProjekatCard(
                         )
                     }
 
-                    // Status badge
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (projekat.aktivan)
-                            Color(0xFF4CAF50).copy(alpha = 0.2f)
-                        else
-                            Color(0xFF9E9E9E).copy(alpha = 0.2f)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = if (projekat.aktivan) "Aktivan" else "Završen",
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            fontSize = 12.sp,
-                            color = if (projekat.aktivan) Color(0xFF4CAF50) else Color(0xFF9E9E9E),
-                            fontWeight = FontWeight.Medium
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (!projekat.aktivan)
+                                Color(0xFF4CAF50).copy(alpha = 0.2f)
+                            else
+                                Color(0xFF9E9E9E).copy(alpha = 0.2f)
+                        ) {
+                            Text(
+                                text = if (projekat.aktivan) "Aktivan" else "Završen",
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                fontSize = 12.sp,
+                                color = if (!projekat.aktivan) Color(0xFF4CAF50) else Color(0xFF9E9E9E),
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        IconButton(onClick = { showEditDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Izmeni projekat",
+                                tint = GoldPrimary
+                            )
+                        }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Info cards sa glassmorphism
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -289,6 +315,7 @@ fun FuturisticProjekatCard(
         }
     }
 }
+
 
 @Composable
 fun InfoChip(
