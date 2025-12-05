@@ -791,11 +791,11 @@ fun MonthlyChartView(
 
 @Composable
 fun MonthBarChart(monthData: MonthDataStat) {
-    val maxHeight = 180f
+    val maxHeight = 180.0
     val maxValue = 100000.0 // Max zarada za skaliranje
     
-    val netHeight = (monthData.net / maxValue * maxHeight).coerceIn(0f, maxHeight).dp
-    val hoursHeight = ((monthData.hours / 20.0) * maxHeight).coerceIn(0f, maxHeight).dp // 20 sati = max
+    val netHeight = (monthData.net / maxValue * maxHeight).coerceIn(0.0, maxHeight).dp
+    val hoursHeight = ((monthData.hours / 20.0) * maxHeight).coerceIn(0.0, maxHeight).dp // 20 sati = max
     
     Column(
         modifier = Modifier
