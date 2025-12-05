@@ -39,6 +39,11 @@ data class StatistikaUiState(
     val projectDayIncome: Double = 0.0,
     val projectDayCosts: Double = 0.0,
 
+    // po projektu + mjesecu
+    val projectMonthHours: Double = 0.0,
+    val projectMonthIncome: Double = 0.0,
+    val projectMonthCosts: Double = 0.0,
+
     // po mesecu – globalno, SVI projekti
     val monthHours: Double = 0.0,
     val monthIncome: Double = 0.0,
@@ -150,6 +155,25 @@ class StatistikaViewModel(
                 dayCosts = 0.0
             }
 
+            // --- po PROJEKTU + MJESECU (ako imamo selektovan projekat)
+            val monthHoursProject: Double
+            val monthIncomeProject: Double
+            val monthCostsProject: Double
+
+            if (projectId != null) {
+                val monthSatiProject = dao.radniSatiZaPeriod(projectId, monthStart, monthEnd)
+                val monthTroskoviProject = dao.troskoviZaPeriod(projectId, monthStart, monthEnd)
+                val monthUplateProject = dao.uplateZaPeriod(projectId, monthStart, monthEnd)
+
+                monthHoursProject = monthSatiProject.sumOf { it.brojSati }
+                monthIncomeProject = monthUplateProject.sumOf { it.iznos }
+                monthCostsProject = monthTroskoviProject.sumOf { it.iznos }
+            } else {
+                monthHoursProject = 0.0
+                monthIncomeProject = 0.0
+                monthCostsProject = 0.0
+            }
+
             // --- po MESECU (svi projekti) ---
             val monthSatiAll = dao.sviSatiZaPeriod(monthStart, monthEnd)
             val monthTroskoviAll = dao.sviTroskoviZaPeriod(monthStart, monthEnd)
@@ -216,6 +240,9 @@ class StatistikaViewModel(
                     projectDayHours = dayHours,
                     projectDayIncome = dayIncome,
                     projectDayCosts = dayCosts,
+                    projectMonthHours = monthHoursProject,
+                    projectMonthIncome = monthIncomeProject,
+                    projectMonthCosts = monthCostsProject,
                     monthHours = monthHours,
                     monthIncome = monthIncome,
                     monthCosts = monthCosts,

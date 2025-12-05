@@ -232,10 +232,9 @@ fun StatistikaPoProjetkuScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Prikazi naziv mjeseca
-        val currentMonth = remember { YearMonth.now() }
+        // Prikazi naziv mjeseca - dinamički
         Text(
-            text = currentMonth.month.getDisplayName(TextStyle.FULL, Locale("sr")).replaceFirstChar { it.uppercase() } + " " + currentMonth.year.toString(),
+            text = uiState.selectedMonth.month.getDisplayName(TextStyle.FULL, Locale("sr")).replaceFirstChar { it.uppercase() } + " " + uiState.selectedMonth.year.toString(),
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
             color = GoldPrimary,
@@ -260,17 +259,17 @@ fun StatistikaPoProjetkuScreen(
         ) {
             ProjectStatsCard(
                 label = "Ukupno sati",
-                value = String.format("%.1fh", uiState.projectDayHours),
+                value = String.format("%.1fh", uiState.projectMonthHours),
                 color = BrownLight
             )
             ProjectStatsCard(
                 label = "Ukupni troškovi",
-                value = currencyFormat.format(uiState.projectDayCosts),
+                value = currencyFormat.format(uiState.projectMonthCosts),
                 color = Color(0xFFFF5722)
             )
             ProjectStatsCard(
                 label = "Ukupne uplate",
-                value = currencyFormat.format(uiState.projectDayIncome),
+                value = currencyFormat.format(uiState.projectMonthIncome),
                 color = Color(0xFF4CAF50)
             )
         }
@@ -1002,27 +1001,27 @@ fun ProjectStatsCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(120.dp),
+            .height(85.dp),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Surface)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(20.dp),
+                .padding(12.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 text = label,
-                fontSize = 16.sp,
+                fontSize = 14.sp,
                 color = TextSecondary,
                 fontWeight = FontWeight.Medium
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = value,
-                fontSize = 32.sp,
+                fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = color
             )
