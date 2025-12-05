@@ -1,4 +1,4 @@
-package com.spremodesign.projecttracker.ui
+package com.example.projecttracker.ui
 
 import android.app.Activity
 import android.content.Intent
@@ -31,18 +31,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
-import com.spremodesign.projecttracker.data.*
-import com.spremodesign.projecttracker.ui.theme.*
-import com.spremodesign.projecttracker.utils.ExcelExporter
-//import com.spremodesign.projecttracker.utils.GoogleDriveHelper
+import com.example.projecttracker.data.*
+import com.example.projecttracker.ui.theme.*
+import com.example.projecttracker.utils.ExcelExporter
+//import com.example.projecttracker.utils.GoogleDriveHelper
 //import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.spremodesign.projecttracker.ui.DodajSateDialog
-import com.spremodesign.projecttracker.ui.DodajTrosakDialog
-import com.spremodesign.projecttracker.ui.DodajUplatuDialog
-import com.spremodesign.projecttracker.ui.EditSateDialog
-import com.spremodesign.projecttracker.ui.EditTrosakDialog
-import com.spremodesign.projecttracker.ui.EditUplatuDialog
-import com.spremodesign.projecttracker.ui.EmptyState
+import com.example.projecttracker.ui.DodajSateDialog
+import com.example.projecttracker.ui.DodajTrosakDialog
+import com.example.projecttracker.ui.DodajUplatuDialog
+import com.example.projecttracker.ui.EditSateDialog
+import com.example.projecttracker.ui.EditTrosakDialog
+import com.example.projecttracker.ui.EditUplatuDialog
+import com.example.projecttracker.ui.EmptyState
 import kotlinx.coroutines.launch
 import org.burnoutcrew.reorderable.*
 import java.io.File
