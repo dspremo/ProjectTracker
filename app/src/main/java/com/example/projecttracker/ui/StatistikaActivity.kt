@@ -10,8 +10,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -108,6 +110,7 @@ fun StatistikaScreen(
         }
     }
 }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatistikaPoProjetkuScreen(
@@ -117,8 +120,6 @@ fun StatistikaPoProjetkuScreen(
 ) {
     val currencyFormat = remember { NumberFormat.getCurrencyInstance(Locale("sr", "RS")) }
     var showProjectPicker by remember { mutableStateOf(false) }
-    var selectedTab by remember { mutableStateOf(0) } // 0 = Sati, 1 = Troškovi, 2 = Uplate
-    var swipeOffset by remember { mutableStateOf(0f) }
 
     // ----- BOTTOM SHEET ZA PROJEKTE -----
     if (showProjectPicker) {
@@ -231,6 +232,16 @@ fun StatistikaPoProjetkuScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Prikazi naziv mjeseca
+        val currentMonth = remember { YearMonth.now() }
+        Text(
+            text = currentMonth.month.getDisplayName(TextStyle.FULL, Locale("sr")).replaceFirstChar { it.uppercase() } + " " + currentMonth.year.toString(),
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            color = GoldPrimary,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
         // Calendar view
         CalendarView(
             selectedDate = uiState.selectedDate,
@@ -240,54 +251,31 @@ fun StatistikaPoProjetkuScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Tab selector
-        ProjectTabSelector(
-            selectedTab = selectedTab,
-            onTabChange = { selectedTab = it }
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Swipeable content
-        Box(
+        // Prikazi sve tri kartice bez swipe-a
+        Column(
             modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(Unit) {
-                    detectHorizontalDragGestures { change, dragAmount ->
-                        change.consume()
-                        swipeOffset += dragAmount
-                        
-                        if (swipeOffset < -100 && selectedTab < 2) {
-                            selectedTab++
-                            swipeOffset = 0f
-                        } else if (swipeOffset > 100 && selectedTab > 0) {
-                            selectedTab--
-                            swipeOffset = 0f
-                        }
-                    }
-                }
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            when (selectedTab) {
-                0 -> ProjectStatsCard(
-                    label = "Ukupno sati",
-                    value = String.format("%.1fh", uiState.projectDayHours),
-                    color = BrownLight
-                )
-                1 -> ProjectStatsCard(
-                    label = "Ukupni troškovi",
-                    value = currencyFormat.format(uiState.projectDayCosts),
-                    color = Color(0xFFFF5722)
-                )
-                2 -> ProjectStatsCard(
-                    label = "Ukupne uplate",
-                    value = currencyFormat.format(uiState.projectDayIncome),
-                    color = Color(0xFF4CAF50)
-                )
-            }
+            ProjectStatsCard(
+                label = "Ukupno sati",
+                value = String.format("%.1fh", uiState.projectDayHours),
+                color = BrownLight
+            )
+            ProjectStatsCard(
+                label = "Ukupni troškovi",
+                value = currencyFormat.format(uiState.projectDayCosts),
+                color = Color(0xFFFF5722)
+            )
+            ProjectStatsCard(
+                label = "Ukupne uplate",
+                value = currencyFormat.format(uiState.projectDayIncome),
+                color = Color(0xFF4CAF50)
+            )
         }
     }
 }
-
 
 @Composable
 fun CalendarView(
