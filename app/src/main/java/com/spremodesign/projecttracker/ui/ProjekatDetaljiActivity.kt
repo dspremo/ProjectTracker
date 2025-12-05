@@ -1,4 +1,4 @@
-package com.example.projecttracker.ui
+package com.spremodesign.projecttracker.ui
 
 import android.app.Activity
 import android.content.Intent
@@ -31,10 +31,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
-import com.example.projecttracker.data.*
-import com.example.projecttracker.ui.theme.*
-import com.example.projecttracker.utils.ExcelExporter
-//import com.example.projecttracker.utils.GoogleDriveHelper
+import com.spremodesign.projecttracker.data.*
+import com.spremodesign.projecttracker.ui.theme.*
+import com.spremodesign.projecttracker.utils.ExcelExporter
+//import com.spremodesign.projecttracker.utils.GoogleDriveHelper
 //import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.spremodesign.projecttracker.ui.DodajSateDialog
 import com.spremodesign.projecttracker.ui.DodajTrosakDialog

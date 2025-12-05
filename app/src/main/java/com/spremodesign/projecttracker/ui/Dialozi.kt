@@ -15,19 +15,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.room.util.copy
-import com.example.projecttracker.data.Projekat
-import com.example.projecttracker.data.RadniSat
-import com.example.projecttracker.data.Trosak
-import com.example.projecttracker.data.Uplata
-import com.example.projecttracker.ui.theme.BrownLight
+import com.spremodesign.projecttracker.data.Projekat
+import com.spremodesign.projecttracker.data.RadniSat
+import com.spremodesign.projecttracker.data.Trosak
+import com.spremodesign.projecttracker.data.Uplata
+import com.spremodesign.projecttracker.ui.theme.BrownLight
 
 // Tema (tvoje custom boje)
-import com.example.projecttracker.ui.theme.GoldPrimary
-import com.example.projecttracker.ui.theme.Surface
-import com.example.projecttracker.ui.theme.SurfaceLight
-import com.example.projecttracker.ui.theme.SurfaceDark
-import com.example.projecttracker.ui.theme.TextPrimary
-import com.example.projecttracker.ui.theme.TextSecondary
+import com.spremodesign.projecttracker.ui.theme.GoldPrimary
+import com.spremodesign.projecttracker.ui.theme.Surface
+import com.spremodesign.projecttracker.ui.theme.SurfaceLight
+import com.spremodesign.projecttracker.ui.theme.SurfaceDark
+import com.spremodesign.projecttracker.ui.theme.TextPrimary
+import com.spremodesign.projecttracker.ui.theme.TextSecondary
 
 // Java utilities
 import java.text.SimpleDateFormat

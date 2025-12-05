@@ -1,15 +1,15 @@
-package com.example.projecttracker.ui
+package com.spremodesign.projecttracker.ui
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.projecttracker.data.AppDatabase
-import com.example.projecttracker.data.Projekat
-import com.example.projecttracker.data.RadniSat
-import com.example.projecttracker.data.Trosak
-import com.example.projecttracker.data.Uplata
+import com.spremodesign.projecttracker.data.AppDatabase
+import com.spremodesign.projecttracker.data.Projekat
+import com.spremodesign.projecttracker.data.RadniSat
+import com.spremodesign.projecttracker.data.Trosak
+import com.spremodesign.projecttracker.data.Uplata
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted

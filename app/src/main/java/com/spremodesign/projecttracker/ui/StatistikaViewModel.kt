@@ -3,8 +3,8 @@ package com.spremodesign.projecttracker.ui
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
-import com.example.projecttracker.data.AppDatabase
-import com.example.projecttracker.data.Projekat
+import com.spremodesign.projecttracker.data.AppDatabase
+import com.spremodesign.projecttracker.data.Projekat
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.time.LocalDate
 import java.time.YearMonth

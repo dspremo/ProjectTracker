@@ -1,4 +1,4 @@
-package com.example.projecttracker.data
+package com.spremodesign.projecttracker.data
 
 import android.content.Context
 import androidx.room.Database

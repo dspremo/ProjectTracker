@@ -1,4 +1,4 @@
-package com.example.projecttracker.ui.theme
+package com.spremodesign.projecttracker.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*

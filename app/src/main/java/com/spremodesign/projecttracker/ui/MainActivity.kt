@@ -1,4 +1,4 @@
-package com.example.projecttracker.ui
+package com.spremodesign.projecttracker.ui
 
 import android.content.Intent
 import android.os.Bundle
@@ -24,9 +24,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.projecttracker.data.AppDatabase
-import com.example.projecttracker.data.Projekat
-import com.example.projecttracker.ui.theme.*
+import com.spremodesign.projecttracker.data.AppDatabase
+import com.spremodesign.projecttracker.data.Projekat
+import com.spremodesign.projecttracker.ui.theme.*
 import com.spremodesign.projecttracker.ui.EditProjekatDialog
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
