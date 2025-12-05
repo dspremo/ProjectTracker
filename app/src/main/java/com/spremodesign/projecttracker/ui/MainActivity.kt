@@ -28,6 +28,8 @@ import com.spremodesign.projecttracker.data.AppDatabase
 import com.spremodesign.projecttracker.data.Projekat
 import com.spremodesign.projecttracker.ui.theme.*
 import com.spremodesign.projecttracker.ui.EditProjekatDialog
+import com.spremodesign.projecttracker.ui.StatistikaActivity
+import com.spremodesign.projecttracker.ui.ProjekatDetaljiActivity
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
