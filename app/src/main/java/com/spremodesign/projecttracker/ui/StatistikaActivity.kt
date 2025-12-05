@@ -28,20 +28,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.projecttracker.data.Projekat
 import com.example.projecttracker.ui.theme.*
+import com.example.projecttracker.ui.StatistikaViewModel
+import com.example.projecttracker.ui.StatistikaUiState
+import com.example.projecttracker.ui.MonthDataStat
 import com.kizitonwose.calendar.compose.HorizontalCalendar
 import com.kizitonwose.calendar.compose.rememberCalendarState
 import com.kizitonwose.calendar.core.*
-import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
-import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottomAxis
-import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStartAxis
-import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
-import com.patrykandpatrick.vico.core.cartesian.axis.AxisPosition
-import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
-import com.patrykandpatrick.vico.core.cartesian.data.columnSeries
-import com.spremodesign.projecttracker.ui.StatistikaUiState
-import com.spremodesign.projecttracker.ui.StatistikaViewModel
 import java.text.NumberFormat
-import java.text.SimpleDateFormat
 import java.time.*
 import java.time.format.TextStyle
 import java.util.*
@@ -825,7 +818,7 @@ fun MonthBarChart(monthData: MonthDataStat) {
             Box(
                 modifier = Modifier
                     .width(24.dp)
-                    .height(netHeight)
+                    .height(netHeight as Dp)
                     .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
                     .background(GoldPrimary)
             )
@@ -834,7 +827,7 @@ fun MonthBarChart(monthData: MonthDataStat) {
             Box(
                 modifier = Modifier
                     .width(24.dp)
-                    .height(hoursHeight)
+                    .height(hoursHeight as Dp)
                     .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
                     .background(BrownLight)
             )
@@ -902,7 +895,7 @@ fun MonthDropdown(
             onDismissRequest = { expanded = false },
             modifier = Modifier.fillMaxWidth(0.9f)
         ) {
-            months.take(12).forEach { month ->
+            months.take(12).forEachIndexed { _, month ->
                 DropdownMenuItem(
                     text = {
                         Text(
