@@ -1,4 +1,4 @@
-package com.example.projecttracker.ui
+package com.spremodesign.projecttracker.ui
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -26,11 +26,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.projecttracker.data.Projekat
-import com.example.projecttracker.ui.theme.*
-import com.example.projecttracker.ui.StatistikaViewModel
-import com.example.projecttracker.ui.StatistikaUiState
-import com.example.projecttracker.ui.MonthDataStat
+import com.spremodesign.projecttracker.data.Projekat
+import com.spremodesign.projecttracker.ui.theme.*
 import com.kizitonwose.calendar.compose.HorizontalCalendar
 import com.kizitonwose.calendar.compose.rememberCalendarState
 import com.kizitonwose.calendar.core.*
