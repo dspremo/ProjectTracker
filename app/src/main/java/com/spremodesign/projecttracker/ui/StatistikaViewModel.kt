@@ -22,6 +22,12 @@ data class MonthProjectStat(
     val earnings: Double
 )
 
+data class MonthDataStat(
+    val month: YearMonth,
+    val hours: Double,
+    val net: Double
+)
+
 data class StatistikaUiState(
     val projekti: List<Projekat> = emptyList(),
     val selectedProject: Projekat? = null,
@@ -41,7 +47,10 @@ data class StatistikaUiState(
     val monthProjects: List<MonthProjectStat> = emptyList(),
 
     // za kalendar – dani kada postoji rad (bilo koji projekat)
-    val daysWithWork: Set<LocalDate> = emptySet()
+    val daysWithWork: Set<LocalDate> = emptySet(),
+    
+    // za grafikon - poslednja 4 meseca
+    val last4Months: List<MonthDataStat> = emptyList()
 )
 
 class StatistikaViewModel(
@@ -181,6 +190,27 @@ class StatistikaViewModel(
                 )
             }
 
+            // --- Poslednja 4 meseca ---
+            val last4MonthsList = mutableListOf<MonthDataStat>()
+            for (i in 3 downTo 0) {
+                val m = month.minusMonths(i.toLong())
+                val mStartDate = m.atDay(1)
+                val mEndDate = m.atEndOfMonth()
+                val mStart = mStartDate.atStartOfDay(zone).toInstant().toEpochMilli()
+                val mEnd = mEndDate.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
+
+                val mSati = dao.sviSatiZaPeriod(mStart, mEnd)
+                val mTroskovi = dao.sviTroskoviZaPeriod(mStart, mEnd)
+                val mUplate = dao.sveUplateZaPeriod(mStart, mEnd)
+
+                val mHours = mSati.sumOf { it.brojSati }
+                val mCosts = mTroskovi.sumOf { it.iznos }
+                val mIncome = mUplate.sumOf { it.iznos }
+                val mNet = mIncome - mCosts
+
+                last4MonthsList.add(MonthDataStat(m, mHours, mNet))
+            }
+
             _uiState.update {
                 it.copy(
                     projectDayHours = dayHours,
@@ -191,7 +221,8 @@ class StatistikaViewModel(
                     monthCosts = monthCosts,
                     monthNet = monthNet,
                     monthProjects = monthProjects,
-                    daysWithWork = daysWithWork
+                    daysWithWork = daysWithWork,
+                    last4Months = last4MonthsList
                 )
             }
         }
