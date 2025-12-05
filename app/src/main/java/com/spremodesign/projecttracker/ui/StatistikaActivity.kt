@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.spremodesign.projecttracker.data.Projekat
 import com.spremodesign.projecttracker.ui.theme.*
@@ -791,10 +792,10 @@ fun MonthlyChartView(
 @Composable
 fun MonthBarChart(monthData: MonthDataStat) {
     val maxHeight = 180f
-    val maxValue = 100000 // Max zarada za skaliranje
+    val maxValue = 100000.0 // Max zarada za skaliranje
     
     val netHeight = (monthData.net / maxValue * maxHeight).coerceIn(0f, maxHeight).dp
-    val hoursHeight = ((monthData.hours / 20) * maxHeight).coerceIn(0f, maxHeight).dp // 20 sati = max
+    val hoursHeight = ((monthData.hours / 20.0) * maxHeight).coerceIn(0f, maxHeight).dp // 20 sati = max
     
     Column(
         modifier = Modifier
