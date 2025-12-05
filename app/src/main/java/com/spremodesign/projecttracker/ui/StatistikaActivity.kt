@@ -5,8 +5,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -28,6 +31,13 @@ import com.example.projecttracker.ui.theme.*
 import com.kizitonwose.calendar.compose.HorizontalCalendar
 import com.kizitonwose.calendar.compose.rememberCalendarState
 import com.kizitonwose.calendar.core.*
+import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
+import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottomAxis
+import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStartAxis
+import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
+import com.patrykandpatrick.vico.core.cartesian.axis.AxisPosition
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
+import com.patrykandpatrick.vico.core.cartesian.data.columnSeries
 import com.spremodesign.projecttracker.ui.StatistikaUiState
 import com.spremodesign.projecttracker.ui.StatistikaViewModel
 import java.text.NumberFormat
@@ -100,7 +110,8 @@ fun StatistikaScreen(
                 )
 
                 1 -> StatistikaPoMesecuScreen(
-                    uiState = uiState
+                    uiState = uiState,
+                    viewModel = viewModel
                 )
             }
         }
@@ -115,6 +126,8 @@ fun StatistikaPoProjetkuScreen(
 ) {
     val currencyFormat = remember { NumberFormat.getCurrencyInstance(Locale("sr", "RS")) }
     var showProjectPicker by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableStateOf(0) } // 0 = Sati, 1 = Troškovi, 2 = Uplate
+    var swipeOffset by remember { mutableStateOf(0f) }
 
     // ----- BOTTOM SHEET ZA PROJEKTE -----
     if (showProjectPicker) {
@@ -236,23 +249,50 @@ fun StatistikaPoProjetkuScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Stats cards
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        // Tab selector
+        ProjectTabSelector(
+            selectedTab = selectedTab,
+            onTabChange = { selectedTab = it }
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Swipeable content
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures { change, dragAmount ->
+                        change.consume()
+                        swipeOffset += dragAmount
+                        
+                        if (swipeOffset < -100 && selectedTab < 2) {
+                            selectedTab++
+                            swipeOffset = 0f
+                        } else if (swipeOffset > 100 && selectedTab > 0) {
+                            selectedTab--
+                            swipeOffset = 0f
+                        }
+                    }
+                }
         ) {
-            MiniStatCard(
-                label = "Ukupno sati",
-                value = String.format("%.1fh", uiState.projectDayHours),
-                color = BrownLight,
-                modifier = Modifier.weight(1f)
-            )
-            MiniStatCard(
-                label = "Zarada (neto)",
-                value = currencyFormat.format(uiState.projectDayIncome - uiState.projectDayCosts),
-                color = Color(0xFF4CAF50),
-                modifier = Modifier.weight(1f)
-            )
+            when (selectedTab) {
+                0 -> ProjectStatsCard(
+                    label = "Ukupno sati",
+                    value = String.format("%.1fh", uiState.projectDayHours),
+                    color = BrownLight
+                )
+                1 -> ProjectStatsCard(
+                    label = "Ukupni troškovi",
+                    value = currencyFormat.format(uiState.projectDayCosts),
+                    color = Color(0xFFFF5722)
+                )
+                2 -> ProjectStatsCard(
+                    label = "Ukupne uplate",
+                    value = currencyFormat.format(uiState.projectDayIncome),
+                    color = Color(0xFF4CAF50)
+                )
+            }
         }
     }
 }
@@ -335,16 +375,66 @@ fun Day(
 
 @Composable
 fun StatistikaPoMesecuScreen(
-    uiState: StatistikaUiState
+    uiState: StatistikaUiState,
+    viewModel: StatistikaViewModel
 ) {
     val currentMonth = uiState.selectedMonth
     val currencyFormat = remember { NumberFormat.getCurrencyInstance(Locale("sr", "RS")) }
+    var swipeOffset by remember { mutableStateOf(0f) }
+    
+    // Svi meseci za grafikon - poslednja 4
+    val displayedMonthsList = generateLast4Months(currentMonth)
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures { change, dragAmount ->
+                    change.consume()
+                    swipeOffset += dragAmount
+                    
+                    // Ako je korisnik sveznuo dovoljno levo, kreni na sledeći mesec
+                    if (swipeOffset < -100) {
+                        viewModel.onMonthChanged(currentMonth.plusMonths(1))
+                        swipeOffset = 0f
+                    }
+                    // Ako je korisnik svezao dovoljno desno, kreni na prethodni mesec
+                    else if (swipeOffset > 100) {
+                        viewModel.onMonthChanged(currentMonth.minusMonths(1))
+                        swipeOffset = 0f
+                    }
+                }
+            },
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Naslov sa mesecom i godinom + Dropdown
+        item {
+            Column(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = currentMonth.month.getDisplayName(TextStyle.FULL, Locale("sr")).replaceFirstChar { it.uppercase() },
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = GoldPrimary
+                )
+                Text(
+                    text = currentMonth.year.toString(),
+                    fontSize = 16.sp,
+                    color = TextDisabled
+                )
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                // Dropdown za izbor meseca
+                MonthDropdown(
+                    selectedMonth = currentMonth,
+                    onMonthSelected = { viewModel.onMonthChanged(it) }
+                )
+            }
+        }
+
         // Month summary card
         item {
             Card(
@@ -355,20 +445,6 @@ fun StatistikaPoMesecuScreen(
                 Column(
                     modifier = Modifier.padding(20.dp)
                 ) {
-                    Text(
-                        text = currentMonth.month.getDisplayName(TextStyle.FULL, Locale("sr")),
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GoldPrimary
-                    )
-                    Text(
-                        text = currentMonth.year.toString(),
-                        fontSize = 14.sp,
-                        color = TextDisabled
-                    )
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
                     MetricRow(
                         label = "Ukupno sati",
                         value = String.format("%.1fh", uiState.monthHours),
@@ -404,6 +480,44 @@ fun StatistikaPoMesecuScreen(
             }
         }
 
+        // Grafikon - Poslednja 4 meseca (Sati i Zarada)
+        item {
+            Text(
+                text = "Pregled sati i zarade",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+            )
+        }
+
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(300.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Surface)
+            ) {
+                MonthlyChartView(months = displayedMonthsList, uiState = uiState)
+            }
+        }
+
+        // Detaljni pregled meseci
+        item {
+            Text(
+                text = "Detaljni pregled meseci",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+            )
+        }
+
+        items(uiState.last4Months) { monthData ->
+            MonthDetailCard(monthData)
+        }
+
         // Projekti ovog meseca
         item {
             Text(
@@ -422,223 +536,24 @@ fun StatistikaPoMesecuScreen(
                 earnings = stat.earnings
             )
         }
-    }
-}
 
-@Composable
-fun SegmentedButton(
-    selectedMode: Int,
-    onModeChange: (Int) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(Surface),
-        horizontalArrangement = Arrangement.SpaceEvenly
-    ) {
-        listOf("Po Projektu", "Po Mesecu").forEachIndexed { index, label ->
-            Button(
-                onClick = { onModeChange(index) },
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(4.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (selectedMode == index) GoldPrimary else Color.Transparent,
-                    contentColor = if (selectedMode == index) SurfaceDark else TextSecondary
-                ),
-                shape = RoundedCornerShape(12.dp),
-                elevation = ButtonDefaults.buttonElevation(
-                    defaultElevation = if (selectedMode == index) 4.dp else 0.dp
-                )
-            ) {
-                Text(
-                    text = label,
-                    fontWeight = if (selectedMode == index) FontWeight.Bold else FontWeight.Normal,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-            }
+        item {
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
 
 @Composable
-fun StatistikaPoMesecuScreen() {
-    val currentMonth = remember { YearMonth.now() }
-    val currencyFormat = remember { NumberFormat.getCurrencyInstance(Locale("sr", "RS")) }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Month summary card
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Surface)
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp)
-                ) {
-                    Text(
-                        text = currentMonth.month.getDisplayName(TextStyle.FULL, Locale("sr")),
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GoldPrimary
-                    )
-                    Text(
-                        text = currentMonth.year.toString(),
-                        fontSize = 14.sp,
-                        color = TextDisabled
-                    )
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    // Metrics
-                    MetricRow(
-                        label = "Ukupno sati",
-                        value = "186.5h",
-                        icon = Icons.Default.Schedule,
-                        color = BrownLight
-                    )
-                    MetricRow(
-                        label = "Ukupne uplate",
-                        value = currencyFormat.format(450000),
-                        icon = Icons.Default.TrendingUp,
-                        color = Color(0xFF4CAF50)
-                    )
-                    MetricRow(
-                        label = "Ukupni troškovi",
-                        value = currencyFormat.format(120000),
-                        icon = Icons.Default.TrendingDown,
-                        color = Color(0xFFFF5722)
-                    )
-
-                    Divider(
-                        modifier = Modifier.padding(vertical = 12.dp),
-                        color = BrownLight.copy(alpha = 0.3f)
-                    )
-
-                    MetricRow(
-                        label = "Neto zarada",
-                        value = currencyFormat.format(330000),
-                        icon = Icons.Default.Paid,
-                        color = GoldPrimary,
-                        isTotal = true
-                    )
-                }
-            }
-        }
-
-        // Chart section
-        item {
-            Text(
-                text = "Dnevni pregled",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-        }
-
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(250.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Surface)
-            ) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "📊 Grafikon\n(Sati, Uplate, Troškovi)",
-                        textAlign = TextAlign.Center,
-                        color = TextDisabled,
-                        fontSize = 16.sp
-                    )
-                }
-            }
-        }
-
-        // Projects list for month
-        item {
-            Text(
-                text = "Projekti ovog meseca",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-        }
-
-        items(3) { index ->
-            MonthProjectCard(
-                projectName = "Projekat ${index + 1}",
-                hours = 45.5 + index * 10,
-                earnings = 85000.0 + index * 20000
-            )
-        }
-    }
-}
-
-@Composable
-fun CalendarView() {
-    val currentMonth = remember { YearMonth.now() }
-    val startMonth = remember { currentMonth.minusMonths(12) }
-    val endMonth = remember { currentMonth.plusMonths(12) }
-
-    val state = rememberCalendarState(
-        startMonth = startMonth,
-        endMonth = endMonth,
-        firstVisibleMonth = currentMonth,
-        firstDayOfWeek = DayOfWeek.MONDAY
+fun generateLast4Months(currentMonth: YearMonth): List<YearMonth> {
+    return listOf(
+        currentMonth.minusMonths(3),
+        currentMonth.minusMonths(2),
+        currentMonth.minusMonths(1),
+        currentMonth
     )
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Surface)
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            HorizontalCalendar(
-                state = state,
-                dayContent = { day ->
-                    Day(day)
-                }
-            )
-        }
-    }
 }
 
-@Composable
-fun Day(day: CalendarDay) {
-    val hasWork = remember { (1..28).random() > 20 } // Mock data
 
-    Box(
-        modifier = Modifier
-            .aspectRatio(1f)
-            .padding(4.dp)
-            .clip(CircleShape)
-            .background(
-                if (hasWork) GoldPrimary.copy(alpha = 0.3f)
-                else Color.Transparent
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = day.date.dayOfMonth.toString(),
-            fontSize = 12.sp,
-            color = if (hasWork) GoldPrimary else TextSecondary,
-            fontWeight = if (hasWork) FontWeight.Bold else FontWeight.Normal
-        )
-    }
-}
 
 @Composable
 fun MetricRow(
@@ -753,6 +668,384 @@ fun MonthProjectCard(
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = GoldPrimary
+            )
+        }
+    }
+}
+
+@Composable
+fun SegmentedButton(
+    selectedMode: Int,
+    onModeChange: (Int) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Surface),
+        horizontalArrangement = Arrangement.SpaceEvenly
+    ) {
+        listOf("Po Projektu", "Po Mesecu").forEachIndexed { index, label ->
+            Button(
+                onClick = { onModeChange(index) },
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(4.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (selectedMode == index) GoldPrimary else Color.Transparent,
+                    contentColor = if (selectedMode == index) SurfaceDark else TextSecondary
+                ),
+                shape = RoundedCornerShape(12.dp),
+                elevation = ButtonDefaults.buttonElevation(
+                    defaultElevation = if (selectedMode == index) 4.dp else 0.dp
+                )
+            ) {
+                Text(
+                    text = label,
+                    fontWeight = if (selectedMode == index) FontWeight.Bold else FontWeight.Normal,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun MonthlyChartView(
+    months: List<YearMonth>,
+    uiState: StatistikaUiState
+) {
+    val currencyFormat = remember { NumberFormat.getCurrencyInstance(Locale("sr", "RS")) }
+    
+    if (uiState.last4Months.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "Nema podataka za prikazivanje",
+                color = TextDisabled,
+                fontSize = 14.sp
+            )
+        }
+        return
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        // Chart sa visokim zaradama
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(horizontal = 4.dp)
+        ) {
+            items(uiState.last4Months) { monthData ->
+                MonthBarChart(monthData = monthData)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Legend
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(GoldPrimary)
+                )
+                Text(
+                    text = "Neto",
+                    fontSize = 11.sp,
+                    color = TextSecondary
+                )
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(BrownLight)
+                )
+                Text(
+                    text = "Sati",
+                    fontSize = 11.sp,
+                    color = TextSecondary
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun MonthBarChart(monthData: MonthDataStat) {
+    val maxHeight = 180f
+    val maxValue = 100000 // Max zarada za skaliranje
+    
+    val netHeight = (monthData.net / maxValue * maxHeight).coerceIn(0f, maxHeight).dp
+    val hoursHeight = ((monthData.hours / 20) * maxHeight).coerceIn(0f, maxHeight).dp // 20 sati = max
+    
+    Column(
+        modifier = Modifier
+            .width(80.dp)
+            .height(200.dp),
+        verticalArrangement = Arrangement.Bottom,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Bars
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            // Net bar
+            Box(
+                modifier = Modifier
+                    .width(24.dp)
+                    .height(netHeight)
+                    .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                    .background(GoldPrimary)
+            )
+            
+            // Hours bar
+            Box(
+                modifier = Modifier
+                    .width(24.dp)
+                    .height(hoursHeight)
+                    .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                    .background(BrownLight)
+            )
+        }
+        
+        // Month label
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = monthData.month.month.getDisplayName(TextStyle.SHORT, Locale("sr")).take(3),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = TextSecondary
+        )
+    }
+}
+
+@Composable
+fun MonthDropdown(
+    selectedMonth: YearMonth,
+    onMonthSelected: (YearMonth) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    
+    val currentYear = LocalDate.now().year
+    val months = mutableListOf<YearMonth>()
+    for (i in 0..23) {
+        months.add(YearMonth.of(currentYear, (12 - i % 12).let { if (it == 0) 12 else it }))
+    }
+    
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Button(
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Surface
+            ),
+            shape = RoundedCornerShape(12.dp),
+            border = androidx.compose.foundation.BorderStroke(
+                width = 1.dp,
+                color = GoldPrimary.copy(alpha = 0.3f)
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${selectedMonth.month.getDisplayName(TextStyle.SHORT, Locale("sr"))} ${selectedMonth.year}",
+                    color = TextPrimary,
+                    fontSize = 16.sp
+                )
+                Icon(
+                    Icons.Default.ArrowDropDown,
+                    contentDescription = null,
+                    tint = GoldPrimary
+                )
+            }
+        }
+        
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.fillMaxWidth(0.9f)
+        ) {
+            months.take(12).forEach { month ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = "${month.month.getDisplayName(TextStyle.FULL, Locale("sr"))} ${month.year}",
+                            color = if (month == selectedMonth) GoldPrimary else TextPrimary
+                        )
+                    },
+                    onClick = {
+                        onMonthSelected(month)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun MonthDetailCard(monthData: MonthDataStat) {
+    val currencyFormat = remember { NumberFormat.getCurrencyInstance(Locale("sr", "RS")) }
+    
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Surface)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = monthData.month.month.getDisplayName(TextStyle.FULL, Locale("sr")).replaceFirstChar { it.uppercase() },
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = monthData.month.year.toString(),
+                        fontSize = 13.sp,
+                        color = TextDisabled,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+                
+                Column(
+                    horizontalAlignment = Alignment.End
+                ) {
+                    Text(
+                        text = currencyFormat.format(monthData.net),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (monthData.net > 0) GoldPrimary else Color(0xFFFF5722)
+                    )
+                    Text(
+                        text = "${String.format("%.1f", monthData.hours)}h",
+                        fontSize = 13.sp,
+                        color = BrownLight,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ProjectTabSelector(
+    selectedTab: Int,
+    onTabChange: (Int) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Surface),
+        horizontalArrangement = Arrangement.SpaceEvenly
+    ) {
+        listOf("Sati", "Troškovi", "Uplate").forEachIndexed { index, label ->
+            Button(
+                onClick = { onTabChange(index) },
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(4.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (selectedTab == index) GoldPrimary else Color.Transparent,
+                    contentColor = if (selectedTab == index) SurfaceDark else TextSecondary
+                ),
+                shape = RoundedCornerShape(10.dp),
+                elevation = ButtonDefaults.buttonElevation(
+                    defaultElevation = if (selectedTab == index) 4.dp else 0.dp
+                )
+            ) {
+                Text(
+                    text = label,
+                    fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(vertical = 6.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ProjectStatsCard(
+    label: String,
+    value: String,
+    color: Color
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(120.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Surface)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = label,
+                fontSize = 16.sp,
+                color = TextSecondary,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = value,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold,
+                color = color
             )
         }
     }
