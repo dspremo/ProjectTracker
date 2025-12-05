@@ -28,12 +28,12 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.projecttracker.data.Projekat
 import com.example.projecttracker.ui.theme.*
+import com.example.projecttracker.ui.StatistikaViewModel
+import com.example.projecttracker.ui.StatistikaUiState
+import com.example.projecttracker.ui.MonthDataStat
 import com.kizitonwose.calendar.compose.HorizontalCalendar
 import com.kizitonwose.calendar.compose.rememberCalendarState
 import com.kizitonwose.calendar.core.*
-import com.spremodesign.projecttracker.ui.MonthDataStat
-import com.spremodesign.projecttracker.ui.StatistikaUiState
-import com.spremodesign.projecttracker.ui.StatistikaViewModel
 import java.text.NumberFormat
 import java.time.*
 import java.time.format.TextStyle
