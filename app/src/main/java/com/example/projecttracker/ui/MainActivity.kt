@@ -657,7 +657,7 @@ fun ProfileDialog(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(
-                        Icons.AutoMirrored.Filled.Logout,
+                        Icons.Filled.Logout,
                         contentDescription = null,
                         modifier = Modifier.size(20.dp)
                     )
