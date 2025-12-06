@@ -2,7 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
-//    id("com.google.gms.google-services") // Za Google Drive
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -67,14 +67,12 @@ dependencies {
     implementation("com.patrykandpatrick.vico:compose:1.13.1")
     implementation("com.patrykandpatrick.vico:compose-m3:1.13.1")
 
-    // Google Drive API
-//    implementation("com.google.android.gms:play-services-auth:20.7.0")
-//    implementation("com.google.api-client:google-api-client-android:2.2.0")
-//    implementation("com.google.apis:google-api-services-drive:v3-rev20231218-2.0.0")
-//    // Google Drive API - ISPRAVLJENO
-//    implementation("com.google.android.gms:play-services-auth:21.0.0")
-//    implementation("com.google.api-client:google-api-client-android:2.2.0")
-//    implementation("com.google.apis:google-api-services-drive:v3-rev20240123-2.0.0")
+    // Google Sign-In
+    implementation("com.google.android.gms:play-services-auth:21.0.0")
+    
+    // Google Drive API (za buducu upotrebu)
+    implementation("com.google.api-client:google-api-client-android:2.2.0")
+    implementation("com.google.apis:google-api-services-drive:v3-rev20240123-2.0.0")
 
     // Excel Export - Apache POI
     implementation("org.apache.poi:poi:5.2.5")

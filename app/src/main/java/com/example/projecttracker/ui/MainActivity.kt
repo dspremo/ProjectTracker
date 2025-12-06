@@ -1,14 +1,18 @@
 package com.example.projecttracker.ui
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -20,10 +24,13 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.example.projecttracker.data.AppDatabase
 import com.example.projecttracker.data.Projekat
 import com.example.projecttracker.ui.theme.*
@@ -62,8 +69,21 @@ fun MainScreen(
     onStatistikaClick: () -> Unit
 ) {
     val viewModel: MainViewModel = viewModel()
+    val authViewModel: AuthViewModel = viewModel()
     val projekti by viewModel.projekti.collectAsState(initial = emptyList())
+    val authState by authViewModel.authState.collectAsState()
+    
     var showDialog by remember { mutableStateOf(false) }
+    var showProfileDialog by remember { mutableStateOf(false) }
+
+    // Google Sign-In launcher
+    val signInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            authViewModel.handleSignInResult(result.data)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -94,21 +114,74 @@ fun MainScreen(
                         )
                     }
 
-                    IconButton(
-                        onClick = onStatistikaClick,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(
-                                Brush.linearGradient(
-                                    colors = listOf(GoldDark, GoldPrimary)
-                                )
-                            )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            Icons.Default.Analytics,
-                            contentDescription = "Statistika",
-                            tint = SurfaceDark
-                        )
+                        // Sign-In / Profile dugme
+                        if (authState.isSignedIn) {
+                            // Prikaži avatar korisnika
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(GoldPrimary)
+                                    .clickable { showProfileDialog = true },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (authState.userPhotoUrl != null) {
+                                    AsyncImage(
+                                        model = authState.userPhotoUrl,
+                                        contentDescription = "Profile",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Text(
+                                        text = authState.userName?.firstOrNull()?.uppercase() ?: "U",
+                                        color = SurfaceDark,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 18.sp
+                                    )
+                                }
+                            }
+                        } else {
+                            // Sign-In dugme
+                            IconButton(
+                                onClick = { signInLauncher.launch(authViewModel.getSignInIntent()) },
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        Brush.linearGradient(
+                                            colors = listOf(Color(0xFF4285F4), Color(0xFF34A853))
+                                        )
+                                    )
+                            ) {
+                                Icon(
+                                    Icons.Default.Person,
+                                    contentDescription = "Prijava",
+                                    tint = Color.White
+                                )
+                            }
+                        }
+
+                        // Statistika dugme
+                        IconButton(
+                            onClick = onStatistikaClick,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    Brush.linearGradient(
+                                        colors = listOf(GoldDark, GoldPrimary)
+                                    )
+                                )
+                        ) {
+                            Icon(
+                                Icons.Default.Analytics,
+                                contentDescription = "Statistika",
+                                tint = SurfaceDark
+                            )
+                        }
                     }
                 }
             }
@@ -190,6 +263,18 @@ fun MainScreen(
             onSave = { projekat ->
                 viewModel.dodajProjekat(projekat)
                 showDialog = false
+            }
+        )
+    }
+
+    // Profile Dialog
+    if (showProfileDialog) {
+        ProfileDialog(
+            authState = authState,
+            onDismiss = { showProfileDialog = false },
+            onSignOut = {
+                authViewModel.signOut()
+                showProfileDialog = false
             }
         )
     }
@@ -469,4 +554,98 @@ fun NoviProjekatDialog(
         containerColor = Surface,
         shape = RoundedCornerShape(24.dp)
     )
+}
+
+@Composable
+fun ProfileDialog(
+    authState: AuthState,
+    onDismiss: () -> Unit,
+    onSignOut: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Surface)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Avatar
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(CircleShape)
+                        .background(GoldPrimary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (authState.userPhotoUrl != null) {
+                        AsyncImage(
+                            model = authState.userPhotoUrl,
+                            contentDescription = "Profile",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Text(
+                            text = authState.userName?.firstOrNull()?.uppercase() ?: "U",
+                            color = SurfaceDark,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 32.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Ime korisnika
+                Text(
+                    text = authState.userName ?: "Korisnik",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+
+                // Email
+                Text(
+                    text = authState.userEmail ?: "",
+                    fontSize = 14.sp,
+                    color = TextSecondary
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Sign Out dugme
+                Button(
+                    onClick = onSignOut,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFE53935),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Logout,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Odjavi se", fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Zatvori dugme
+                TextButton(onClick = onDismiss) {
+                    Text("Zatvori", color = TextSecondary)
+                }
+            }
+        }
+    }
 }
