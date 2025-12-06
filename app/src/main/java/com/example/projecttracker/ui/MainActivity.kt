@@ -164,26 +164,52 @@ fun MainScreen(
                                 )
                             }
                         }
-
-                        // Statistika dugme
-                        IconButton(
-                            onClick = onStatistikaClick,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(
-                                    Brush.linearGradient(
-                                        colors = listOf(GoldDark, GoldPrimary)
-                                    )
-                                )
-                        ) {
-                            Icon(
-                                Icons.Default.Analytics,
-                                contentDescription = "Statistika",
-                                tint = SurfaceDark
-                            )
-                        }
                     }
                 }
+            }
+        },
+        bottomBar = {
+            NavigationBar(
+                containerColor = Surface,
+                contentColor = TextPrimary,
+                tonalElevation = 8.dp
+            ) {
+                NavigationBarItem(
+                    selected = true,
+                    onClick = { /* Already on home */ },
+                    icon = {
+                        Icon(
+                            Icons.Default.Home,
+                            contentDescription = "Projekti"
+                        )
+                    },
+                    label = { Text("Projekti") },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = GoldPrimary,
+                        selectedTextColor = GoldPrimary,
+                        indicatorColor = GoldPrimary.copy(alpha = 0.2f),
+                        unselectedIconColor = TextSecondary,
+                        unselectedTextColor = TextSecondary
+                    )
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onStatistikaClick,
+                    icon = {
+                        Icon(
+                            Icons.Default.BarChart,
+                            contentDescription = "Statistika"
+                        )
+                    },
+                    label = { Text("Statistika") },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = GoldPrimary,
+                        selectedTextColor = GoldPrimary,
+                        indicatorColor = GoldPrimary.copy(alpha = 0.2f),
+                        unselectedIconColor = TextSecondary,
+                        unselectedTextColor = TextSecondary
+                    )
+                )
             }
         },
         floatingActionButton = {
