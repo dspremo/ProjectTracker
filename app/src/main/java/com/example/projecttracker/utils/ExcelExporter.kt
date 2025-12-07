@@ -14,6 +14,522 @@ class ExcelExporter(private val context: Context) {
     private val dateFormat = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
     private val currencyFormat = java.text.NumberFormat.getCurrencyInstance(Locale("sr", "RS"))
 
+    companion object {
+        private val dateFormatStatic = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+        private val currencyFormatStatic = java.text.NumberFormat.getCurrencyInstance(Locale("sr", "RS"))
+
+        /**
+         * Static metoda za generisanje mjesečnog izvještaja
+         */
+        suspend fun exportMonthlyReport(
+            year: Int,
+            month: Int,
+            database: AppDatabase
+        ): File {
+            val workbook = XSSFWorkbook()
+            
+            val calendar = Calendar.getInstance()
+            calendar.set(year, month, 1, 0, 0, 0)
+            calendar.set(Calendar.MILLISECOND, 0)
+            val startOfMonth = calendar.timeInMillis
+            
+            calendar.set(Calendar.DAY_OF_MONTH, calendar.getActualMaximum(Calendar.DAY_OF_MONTH))
+            calendar.set(Calendar.HOUR_OF_DAY, 23)
+            calendar.set(Calendar.MINUTE, 59)
+            calendar.set(Calendar.SECOND, 59)
+            val endOfMonth = calendar.timeInMillis
+
+            val monthName = java.text.SimpleDateFormat("MMMM yyyy", Locale("sr")).format(Date(startOfMonth))
+
+            // Sheet 1: Sumarni pregled
+            createMonthlySummarySheetStatic(workbook, database, startOfMonth, endOfMonth, monthName)
+
+            // Sheet 2: Detalji po projektu
+            createMonthlyProjectDetailsSheetStatic(workbook, database, startOfMonth, endOfMonth)
+
+            // Sheet 3: Svi radni sati
+            createMonthlyHoursSheetStatic(workbook, database, startOfMonth, endOfMonth)
+
+            // Sheet 4: Svi troškovi
+            createMonthlyCostsSheetStatic(workbook, database, startOfMonth, endOfMonth)
+
+            // Sheet 5: Sve uplate
+            createMonthlyPaymentsSheetStatic(workbook, database, startOfMonth, endOfMonth)
+
+            val fileName = "Izvještaj_${year}_${String.format("%02d", month + 1)}.xlsx"
+            val file = File(database.openHelper.writableDatabase.path).parentFile?.parentFile?.let {
+                File(it, "files/$fileName")
+            } ?: throw Exception("Cannot create file")
+            
+            file.parentFile?.mkdirs()
+
+            FileOutputStream(file).use { outputStream ->
+                workbook.write(outputStream)
+            }
+
+            workbook.close()
+            return file
+        }
+
+        private suspend fun createMonthlySummarySheetStatic(
+            workbook: Workbook,
+            database: AppDatabase,
+            startOfMonth: Long,
+            endOfMonth: Long,
+            monthName: String
+        ) {
+            val sheet = workbook.createSheet("Sumarni Pregled")
+            val headerStyle = createHeaderStyleStatic(workbook)
+            val goldStyle = createGoldStyleStatic(workbook)
+            val titleStyle = createTitleStyleStatic(workbook)
+
+            var rowNum = 0
+
+            val titleRow = sheet.createRow(rowNum++)
+            val titleCell = titleRow.createCell(0)
+            titleCell.setCellValue("Mjesečni Izvještaj - $monthName")
+            titleCell.cellStyle = titleStyle
+
+            rowNum++
+
+            val allHours = database.projekatDao().sviSatiZaPeriod(startOfMonth, endOfMonth)
+            val allCosts = database.projekatDao().sviTroskoviZaPeriod(startOfMonth, endOfMonth)
+            val allPayments = database.projekatDao().sveUplateZaPeriod(startOfMonth, endOfMonth)
+
+            val totalHours = allHours.sumOf { it.brojSati }
+            val totalCosts = allCosts.sumOf { it.iznos }
+            val totalPayments = allPayments.sumOf { it.iznos }
+            val netProfit = totalPayments - totalCosts
+
+            createInfoRowStatic(sheet, rowNum++, "Ukupno radnih sati:", String.format("%.2f h", totalHours), headerStyle)
+            createInfoRowStatic(sheet, rowNum++, "Ukupni troškovi:", currencyFormatStatic.format(totalCosts), headerStyle)
+            createInfoRowStatic(sheet, rowNum++, "Ukupne uplate:", currencyFormatStatic.format(totalPayments), goldStyle)
+            createInfoRowStatic(sheet, rowNum++, "Neto zarada:", currencyFormatStatic.format(netProfit), goldStyle)
+
+            if (totalHours > 0) {
+                val hourlyRate = netProfit / totalHours
+                createInfoRowStatic(sheet, rowNum++, "Prosječna satnica:", currencyFormatStatic.format(hourlyRate), goldStyle)
+            }
+
+            rowNum++
+            
+            val projectIds = (allHours.map { it.projekatId } + allCosts.map { it.projekatId } + allPayments.map { it.projekatId }).distinct()
+            createInfoRowStatic(sheet, rowNum++, "Aktivnih projekata:", projectIds.size.toString(), headerStyle)
+
+            sheet.autoSizeColumn(0)
+            sheet.autoSizeColumn(1)
+        }
+
+        private suspend fun createMonthlyProjectDetailsSheetStatic(
+            workbook: Workbook,
+            database: AppDatabase,
+            startOfMonth: Long,
+            endOfMonth: Long
+        ) {
+            val sheet = workbook.createSheet("Po Projektu")
+            val headerStyle = createHeaderStyleStatic(workbook)
+
+            val headerRow = sheet.createRow(0)
+            val headers = arrayOf("Projekat", "Klijent", "Sati", "Troškovi", "Uplate", "Neto")
+            headers.forEachIndexed { index, header ->
+                val cell = headerRow.createCell(index)
+                cell.setCellValue(header)
+                cell.cellStyle = headerStyle
+            }
+
+            val projekti = database.projekatDao().sviProjektiList()
+            var rowNum = 1
+
+            for (projekat in projekti) {
+                val sati = database.projekatDao().radniSatiZaPeriod(projekat.id, startOfMonth, endOfMonth)
+                val troskovi = database.projekatDao().troskoviZaPeriod(projekat.id, startOfMonth, endOfMonth)
+                val uplate = database.projekatDao().uplateZaPeriod(projekat.id, startOfMonth, endOfMonth)
+
+                val totalHours = sati.sumOf { it.brojSati }
+                val totalCosts = troskovi.sumOf { it.iznos }
+                val totalPayments = uplate.sumOf { it.iznos }
+
+                if (totalHours == 0.0 && totalCosts == 0.0 && totalPayments == 0.0) continue
+
+                val row = sheet.createRow(rowNum++)
+                row.createCell(0).setCellValue(projekat.naziv)
+                row.createCell(1).setCellValue(projekat.klijent)
+                row.createCell(2).setCellValue(totalHours)
+                row.createCell(3).setCellValue(totalCosts)
+                row.createCell(4).setCellValue(totalPayments)
+                row.createCell(5).setCellValue(totalPayments - totalCosts)
+            }
+
+            for (i in 0..5) sheet.autoSizeColumn(i)
+        }
+
+        private suspend fun createMonthlyHoursSheetStatic(
+            workbook: Workbook,
+            database: AppDatabase,
+            startOfMonth: Long,
+            endOfMonth: Long
+        ) {
+            val sheet = workbook.createSheet("Radni Sati")
+            val headerStyle = createHeaderStyleStatic(workbook)
+
+            val headerRow = sheet.createRow(0)
+            val headers = arrayOf("Datum", "Projekat", "Sati", "Opis")
+            headers.forEachIndexed { index, header ->
+                val cell = headerRow.createCell(index)
+                cell.setCellValue(header)
+                cell.cellStyle = headerStyle
+            }
+
+            val allHours = database.projekatDao().sviSatiZaPeriod(startOfMonth, endOfMonth)
+            val projekti = database.projekatDao().sviProjektiList().associateBy { it.id }
+
+            allHours.sortedByDescending { it.datum }.forEachIndexed { index, sat ->
+                val row = sheet.createRow(index + 1)
+                row.createCell(0).setCellValue(dateFormatStatic.format(Date(sat.datum)))
+                row.createCell(1).setCellValue(projekti[sat.projekatId]?.naziv ?: "Nepoznat")
+                row.createCell(2).setCellValue(sat.brojSati)
+                row.createCell(3).setCellValue(sat.opis)
+            }
+
+            for (i in 0..3) sheet.autoSizeColumn(i)
+        }
+
+        private suspend fun createMonthlyCostsSheetStatic(
+            workbook: Workbook,
+            database: AppDatabase,
+            startOfMonth: Long,
+            endOfMonth: Long
+        ) {
+            val sheet = workbook.createSheet("Troškovi")
+            val headerStyle = createHeaderStyleStatic(workbook)
+
+            val headerRow = sheet.createRow(0)
+            val headers = arrayOf("Datum", "Projekat", "Iznos", "Kategorija", "Opis")
+            headers.forEachIndexed { index, header ->
+                val cell = headerRow.createCell(index)
+                cell.setCellValue(header)
+                cell.cellStyle = headerStyle
+            }
+
+            val allCosts = database.projekatDao().sviTroskoviZaPeriod(startOfMonth, endOfMonth)
+            val projekti = database.projekatDao().sviProjektiList().associateBy { it.id }
+
+            allCosts.sortedByDescending { it.datum }.forEachIndexed { index, trosak ->
+                val row = sheet.createRow(index + 1)
+                row.createCell(0).setCellValue(dateFormatStatic.format(Date(trosak.datum)))
+                row.createCell(1).setCellValue(projekti[trosak.projekatId]?.naziv ?: "Nepoznat")
+                row.createCell(2).setCellValue(trosak.iznos)
+                row.createCell(3).setCellValue(trosak.kategorija)
+                row.createCell(4).setCellValue(trosak.opis)
+            }
+
+            for (i in 0..4) sheet.autoSizeColumn(i)
+        }
+
+        private suspend fun createMonthlyPaymentsSheetStatic(
+            workbook: Workbook,
+            database: AppDatabase,
+            startOfMonth: Long,
+            endOfMonth: Long
+        ) {
+            val sheet = workbook.createSheet("Uplate")
+            val headerStyle = createHeaderStyleStatic(workbook)
+
+            val headerRow = sheet.createRow(0)
+            val headers = arrayOf("Datum", "Projekat", "Iznos", "Opis")
+            headers.forEachIndexed { index, header ->
+                val cell = headerRow.createCell(index)
+                cell.setCellValue(header)
+                cell.cellStyle = headerStyle
+            }
+
+            val allPayments = database.projekatDao().sveUplateZaPeriod(startOfMonth, endOfMonth)
+            val projekti = database.projekatDao().sviProjektiList().associateBy { it.id }
+
+            allPayments.sortedByDescending { it.datum }.forEachIndexed { index, uplata ->
+                val row = sheet.createRow(index + 1)
+                row.createCell(0).setCellValue(dateFormatStatic.format(Date(uplata.datum)))
+                row.createCell(1).setCellValue(projekti[uplata.projekatId]?.naziv ?: "Nepoznat")
+                row.createCell(2).setCellValue(uplata.iznos)
+                row.createCell(3).setCellValue(uplata.opis)
+            }
+
+            for (i in 0..3) sheet.autoSizeColumn(i)
+        }
+
+        private fun createInfoRowStatic(sheet: Sheet, rowNum: Int, label: String, value: String, style: CellStyle) {
+            val row = sheet.createRow(rowNum)
+            row.createCell(0).setCellValue(label)
+            val valueCell = row.createCell(1)
+            valueCell.setCellValue(value)
+            valueCell.cellStyle = style
+        }
+
+        private fun createHeaderStyleStatic(workbook: Workbook): CellStyle {
+            val style = workbook.createCellStyle()
+            val font = workbook.createFont()
+            font.bold = true
+            font.color = IndexedColors.WHITE.index
+            style.setFont(font)
+            style.fillForegroundColor = IndexedColors.DARK_BLUE.index
+            style.fillPattern = FillPatternType.SOLID_FOREGROUND
+            return style
+        }
+
+        private fun createGoldStyleStatic(workbook: Workbook): CellStyle {
+            val style = workbook.createCellStyle()
+            val font = workbook.createFont()
+            font.bold = true
+            font.color = IndexedColors.GOLD.index
+            style.setFont(font)
+            return style
+        }
+
+        private fun createTitleStyleStatic(workbook: Workbook): CellStyle {
+            val style = workbook.createCellStyle()
+            val font = workbook.createFont()
+            font.bold = true
+            font.fontHeightInPoints = 18
+            style.setFont(font)
+            return style
+        }
+    }
+
+    /**
+     * Instance metoda za generisanje mjesečnog izvještaja
+     */
+    suspend fun exportMonthlyReportInstance(
+        year: Int,
+        month: Int,
+        database: AppDatabase
+    ): File {
+        val workbook = XSSFWorkbook()
+        
+        val calendar = Calendar.getInstance()
+        calendar.set(year, month, 1, 0, 0, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+        val startOfMonth = calendar.timeInMillis
+        
+        calendar.set(Calendar.DAY_OF_MONTH, calendar.getActualMaximum(Calendar.DAY_OF_MONTH))
+        calendar.set(Calendar.HOUR_OF_DAY, 23)
+        calendar.set(Calendar.MINUTE, 59)
+        calendar.set(Calendar.SECOND, 59)
+        val endOfMonth = calendar.timeInMillis
+
+        val monthName = java.text.SimpleDateFormat("MMMM yyyy", Locale("sr")).format(Date(startOfMonth))
+
+        // Sheet 1: Sumarni pregled
+        createMonthlySummarySheetInstance(workbook, database, startOfMonth, endOfMonth, monthName)
+
+        // Sheet 2: Detalji po projektu
+        createMonthlyProjectDetailsSheetInstance(workbook, database, startOfMonth, endOfMonth)
+
+        // Sheet 3: Svi radni sati
+        createMonthlyHoursSheetInstance(workbook, database, startOfMonth, endOfMonth)
+
+        // Sheet 4: Svi troškovi
+        createMonthlyCostsSheetInstance(workbook, database, startOfMonth, endOfMonth)
+
+        // Sheet 5: Sve uplate
+        createMonthlyPaymentsSheetInstance(workbook, database, startOfMonth, endOfMonth)
+
+        val fileName = "Izvještaj_${year}_${String.format("%02d", month + 1)}.xlsx"
+        val file = File(context.getExternalFilesDir(null), fileName)
+
+        FileOutputStream(file).use { outputStream ->
+            workbook.write(outputStream)
+        }
+
+        workbook.close()
+        return file
+    }
+
+    private suspend fun createMonthlySummarySheetInstance(
+        workbook: Workbook,
+        database: AppDatabase,
+        startOfMonth: Long,
+        endOfMonth: Long,
+        monthName: String
+    ) {
+        val sheet = workbook.createSheet("Sumarni Pregled")
+        val headerStyle = createHeaderStyle(workbook)
+        val goldStyle = createGoldStyle(workbook)
+        val titleStyle = createTitleStyle(workbook)
+
+        var rowNum = 0
+
+        val titleRow = sheet.createRow(rowNum++)
+        val titleCell = titleRow.createCell(0)
+        titleCell.setCellValue("Mjesečni Izvještaj - $monthName")
+        titleCell.cellStyle = titleStyle
+
+        rowNum++
+
+        val allHours = database.projekatDao().sviSatiZaPeriod(startOfMonth, endOfMonth)
+        val allCosts = database.projekatDao().sviTroskoviZaPeriod(startOfMonth, endOfMonth)
+        val allPayments = database.projekatDao().sveUplateZaPeriod(startOfMonth, endOfMonth)
+
+        val totalHours = allHours.sumOf { it.brojSati }
+        val totalCosts = allCosts.sumOf { it.iznos }
+        val totalPayments = allPayments.sumOf { it.iznos }
+        val netProfit = totalPayments - totalCosts
+
+        createInfoRow(sheet, rowNum++, "Ukupno radnih sati:", String.format("%.2f h", totalHours), headerStyle)
+        createInfoRow(sheet, rowNum++, "Ukupni troškovi:", currencyFormat.format(totalCosts), headerStyle)
+        createInfoRow(sheet, rowNum++, "Ukupne uplate:", currencyFormat.format(totalPayments), goldStyle)
+        createInfoRow(sheet, rowNum++, "Neto zarada:", currencyFormat.format(netProfit), goldStyle)
+
+        if (totalHours > 0) {
+            val hourlyRate = netProfit / totalHours
+            createInfoRow(sheet, rowNum++, "Prosječna satnica:", currencyFormat.format(hourlyRate), goldStyle)
+        }
+
+        rowNum++
+        
+        val projectIds = (allHours.map { it.projekatId } + allCosts.map { it.projekatId } + allPayments.map { it.projekatId }).distinct()
+        createInfoRow(sheet, rowNum++, "Aktivnih projekata:", projectIds.size.toString(), headerStyle)
+
+        sheet.autoSizeColumn(0)
+        sheet.autoSizeColumn(1)
+    }
+
+    private suspend fun createMonthlyProjectDetailsSheetInstance(
+        workbook: Workbook,
+        database: AppDatabase,
+        startOfMonth: Long,
+        endOfMonth: Long
+    ) {
+        val sheet = workbook.createSheet("Po Projektu")
+        val headerStyle = createHeaderStyle(workbook)
+
+        val headerRow = sheet.createRow(0)
+        val headers = arrayOf("Projekat", "Klijent", "Sati", "Troškovi", "Uplate", "Neto")
+        headers.forEachIndexed { index, header ->
+            val cell = headerRow.createCell(index)
+            cell.setCellValue(header)
+            cell.cellStyle = headerStyle
+        }
+
+        val projekti = database.projekatDao().sviProjektiList()
+        var rowNum = 1
+
+        for (projekat in projekti) {
+            val sati = database.projekatDao().radniSatiZaPeriod(projekat.id, startOfMonth, endOfMonth)
+            val troskovi = database.projekatDao().troskoviZaPeriod(projekat.id, startOfMonth, endOfMonth)
+            val uplate = database.projekatDao().uplateZaPeriod(projekat.id, startOfMonth, endOfMonth)
+
+            val totalHours = sati.sumOf { it.brojSati }
+            val totalCosts = troskovi.sumOf { it.iznos }
+            val totalPayments = uplate.sumOf { it.iznos }
+
+            if (totalHours == 0.0 && totalCosts == 0.0 && totalPayments == 0.0) continue
+
+            val row = sheet.createRow(rowNum++)
+            row.createCell(0).setCellValue(projekat.naziv)
+            row.createCell(1).setCellValue(projekat.klijent)
+            row.createCell(2).setCellValue(totalHours)
+            row.createCell(3).setCellValue(totalCosts)
+            row.createCell(4).setCellValue(totalPayments)
+            row.createCell(5).setCellValue(totalPayments - totalCosts)
+        }
+
+        for (i in 0..5) sheet.autoSizeColumn(i)
+    }
+
+    private suspend fun createMonthlyHoursSheetInstance(
+        workbook: Workbook,
+        database: AppDatabase,
+        startOfMonth: Long,
+        endOfMonth: Long
+    ) {
+        val sheet = workbook.createSheet("Radni Sati")
+        val headerStyle = createHeaderStyle(workbook)
+
+        val headerRow = sheet.createRow(0)
+        val headers = arrayOf("Datum", "Projekat", "Sati", "Opis")
+        headers.forEachIndexed { index, header ->
+            val cell = headerRow.createCell(index)
+            cell.setCellValue(header)
+            cell.cellStyle = headerStyle
+        }
+
+        val allHours = database.projekatDao().sviSatiZaPeriod(startOfMonth, endOfMonth)
+        val projekti = database.projekatDao().sviProjektiList().associateBy { it.id }
+
+        allHours.sortedByDescending { it.datum }.forEachIndexed { index, sat ->
+            val row = sheet.createRow(index + 1)
+            row.createCell(0).setCellValue(dateFormat.format(Date(sat.datum)))
+            row.createCell(1).setCellValue(projekti[sat.projekatId]?.naziv ?: "Nepoznat")
+            row.createCell(2).setCellValue(sat.brojSati)
+            row.createCell(3).setCellValue(sat.opis)
+        }
+
+        for (i in 0..3) sheet.autoSizeColumn(i)
+    }
+
+    private suspend fun createMonthlyCostsSheetInstance(
+        workbook: Workbook,
+        database: AppDatabase,
+        startOfMonth: Long,
+        endOfMonth: Long
+    ) {
+        val sheet = workbook.createSheet("Troškovi")
+        val headerStyle = createHeaderStyle(workbook)
+
+        val headerRow = sheet.createRow(0)
+        val headers = arrayOf("Datum", "Projekat", "Iznos", "Kategorija", "Opis")
+        headers.forEachIndexed { index, header ->
+            val cell = headerRow.createCell(index)
+            cell.setCellValue(header)
+            cell.cellStyle = headerStyle
+        }
+
+        val allCosts = database.projekatDao().sviTroskoviZaPeriod(startOfMonth, endOfMonth)
+        val projekti = database.projekatDao().sviProjektiList().associateBy { it.id }
+
+        allCosts.sortedByDescending { it.datum }.forEachIndexed { index, trosak ->
+            val row = sheet.createRow(index + 1)
+            row.createCell(0).setCellValue(dateFormat.format(Date(trosak.datum)))
+            row.createCell(1).setCellValue(projekti[trosak.projekatId]?.naziv ?: "Nepoznat")
+            row.createCell(2).setCellValue(trosak.iznos)
+            row.createCell(3).setCellValue(trosak.kategorija)
+            row.createCell(4).setCellValue(trosak.opis)
+        }
+
+        for (i in 0..4) sheet.autoSizeColumn(i)
+    }
+
+    private suspend fun createMonthlyPaymentsSheetInstance(
+        workbook: Workbook,
+        database: AppDatabase,
+        startOfMonth: Long,
+        endOfMonth: Long
+    ) {
+        val sheet = workbook.createSheet("Uplate")
+        val headerStyle = createHeaderStyle(workbook)
+
+        val headerRow = sheet.createRow(0)
+        val headers = arrayOf("Datum", "Projekat", "Iznos", "Opis")
+        headers.forEachIndexed { index, header ->
+            val cell = headerRow.createCell(index)
+            cell.setCellValue(header)
+            cell.cellStyle = headerStyle
+        }
+
+        val allPayments = database.projekatDao().sveUplateZaPeriod(startOfMonth, endOfMonth)
+        val projekti = database.projekatDao().sviProjektiList().associateBy { it.id }
+
+        allPayments.sortedByDescending { it.datum }.forEachIndexed { index, uplata ->
+            val row = sheet.createRow(index + 1)
+            row.createCell(0).setCellValue(dateFormat.format(Date(uplata.datum)))
+            row.createCell(1).setCellValue(projekti[uplata.projekatId]?.naziv ?: "Nepoznat")
+            row.createCell(2).setCellValue(uplata.iznos)
+            row.createCell(3).setCellValue(uplata.opis)
+        }
+
+        for (i in 0..3) sheet.autoSizeColumn(i)
+    }
+
     suspend fun exportProjekat(
         projekat: Projekat,
         sati: List<RadniSat>,
@@ -200,242 +716,5 @@ class ExcelExporter(private val context: Context) {
         font.fontHeightInPoints = 18
         style.setFont(font)
         return style
-    }
-
-    /**
-     * Generiši mjesečni izvještaj za sve projekte
-     */
-    suspend fun exportMonthlyReport(
-        year: Int,
-        month: Int,
-        database: AppDatabase
-    ): File {
-        val workbook = XSSFWorkbook()
-        
-        val calendar = Calendar.getInstance()
-        calendar.set(year, month - 1, 1, 0, 0, 0)
-        val startOfMonth = calendar.timeInMillis
-        
-        calendar.set(year, month - 1, calendar.getActualMaximum(Calendar.DAY_OF_MONTH), 23, 59, 59)
-        val endOfMonth = calendar.timeInMillis
-
-        val monthName = java.text.SimpleDateFormat("MMMM yyyy", Locale("sr")).format(Date(startOfMonth))
-
-        // Sheet 1: Sumarni pregled
-        createMonthlySummarySheet(workbook, database, startOfMonth, endOfMonth, monthName)
-
-        // Sheet 2: Detalji po projektu
-        createMonthlyProjectDetailsSheet(workbook, database, startOfMonth, endOfMonth)
-
-        // Sheet 3: Svi radni sati
-        createMonthlyHoursSheet(workbook, database, startOfMonth, endOfMonth)
-
-        // Sheet 4: Svi troškovi
-        createMonthlyCostsSheet(workbook, database, startOfMonth, endOfMonth)
-
-        // Sheet 5: Sve uplate
-        createMonthlyPaymentsSheet(workbook, database, startOfMonth, endOfMonth)
-
-        val fileName = "Izvještaj_${year}_${String.format("%02d", month)}.xlsx"
-        val file = File(context.getExternalFilesDir(null), fileName)
-
-        FileOutputStream(file).use { outputStream ->
-            workbook.write(outputStream)
-        }
-
-        workbook.close()
-        return file
-    }
-
-    private suspend fun createMonthlySummarySheet(
-        workbook: Workbook,
-        database: AppDatabase,
-        startOfMonth: Long,
-        endOfMonth: Long,
-        monthName: String
-    ) {
-        val sheet = workbook.createSheet("Sumarni Pregled")
-        val headerStyle = createHeaderStyle(workbook)
-        val goldStyle = createGoldStyle(workbook)
-        val titleStyle = createTitleStyle(workbook)
-
-        var rowNum = 0
-
-        // Naslov
-        val titleRow = sheet.createRow(rowNum++)
-        val titleCell = titleRow.createCell(0)
-        titleCell.setCellValue("Mjesečni Izvještaj - $monthName")
-        titleCell.cellStyle = titleStyle
-
-        rowNum++
-
-        // Dohvati sve podatke
-        val allHours = database.projekatDao().sviSatiZaPeriod(startOfMonth, endOfMonth)
-        val allCosts = database.projekatDao().sviTroskoviZaPeriod(startOfMonth, endOfMonth)
-        val allPayments = database.projekatDao().sveUplateZaPeriod(startOfMonth, endOfMonth)
-
-        val totalHours = allHours.sumOf { it.brojSati }
-        val totalCosts = allCosts.sumOf { it.iznos }
-        val totalPayments = allPayments.sumOf { it.iznos }
-        val netProfit = totalPayments - totalCosts
-
-        // Sumarni podaci
-        createInfoRow(sheet, rowNum++, "Ukupno radnih sati:", String.format("%.2f h", totalHours), headerStyle)
-        createInfoRow(sheet, rowNum++, "Ukupni troškovi:", currencyFormat.format(totalCosts), headerStyle)
-        createInfoRow(sheet, rowNum++, "Ukupne uplate:", currencyFormat.format(totalPayments), goldStyle)
-        createInfoRow(sheet, rowNum++, "Neto zarada:", currencyFormat.format(netProfit), goldStyle)
-
-        if (totalHours > 0) {
-            val hourlyRate = netProfit / totalHours
-            createInfoRow(sheet, rowNum++, "Prosječna satnica:", currencyFormat.format(hourlyRate), goldStyle)
-        }
-
-        rowNum++
-        
-        // Broj projekata
-        val projectIds = (allHours.map { it.projekatId } + allCosts.map { it.projekatId } + allPayments.map { it.projekatId }).distinct()
-        createInfoRow(sheet, rowNum++, "Aktivnih projekata:", projectIds.size.toString(), headerStyle)
-
-        sheet.autoSizeColumn(0)
-        sheet.autoSizeColumn(1)
-    }
-
-    private suspend fun createMonthlyProjectDetailsSheet(
-        workbook: Workbook,
-        database: AppDatabase,
-        startOfMonth: Long,
-        endOfMonth: Long
-    ) {
-        val sheet = workbook.createSheet("Po Projektu")
-        val headerStyle = createHeaderStyle(workbook)
-
-        // Header
-        val headerRow = sheet.createRow(0)
-        val headers = arrayOf("Projekat", "Klijent", "Sati", "Troškovi", "Uplate", "Neto")
-        headers.forEachIndexed { index, header ->
-            val cell = headerRow.createCell(index)
-            cell.setCellValue(header)
-            cell.cellStyle = headerStyle
-        }
-
-        val projekti = database.projekatDao().dohvatiSve()
-        var rowNum = 1
-
-        for (projekat in projekti) {
-            val sati = database.projekatDao().radniSatiZaPeriod(projekat.id, startOfMonth, endOfMonth)
-            val troskovi = database.projekatDao().troskoviZaPeriod(projekat.id, startOfMonth, endOfMonth)
-            val uplate = database.projekatDao().uplateZaPeriod(projekat.id, startOfMonth, endOfMonth)
-
-            val totalHours = sati.sumOf { it.brojSati }
-            val totalCosts = troskovi.sumOf { it.iznos }
-            val totalPayments = uplate.sumOf { it.iznos }
-
-            // Preskoči projekte bez aktivnosti
-            if (totalHours == 0.0 && totalCosts == 0.0 && totalPayments == 0.0) continue
-
-            val row = sheet.createRow(rowNum++)
-            row.createCell(0).setCellValue(projekat.naziv)
-            row.createCell(1).setCellValue(projekat.klijent)
-            row.createCell(2).setCellValue(totalHours)
-            row.createCell(3).setCellValue(totalCosts)
-            row.createCell(4).setCellValue(totalPayments)
-            row.createCell(5).setCellValue(totalPayments - totalCosts)
-        }
-
-        for (i in 0..5) sheet.autoSizeColumn(i)
-    }
-
-    private suspend fun createMonthlyHoursSheet(
-        workbook: Workbook,
-        database: AppDatabase,
-        startOfMonth: Long,
-        endOfMonth: Long
-    ) {
-        val sheet = workbook.createSheet("Radni Sati")
-        val headerStyle = createHeaderStyle(workbook)
-
-        val headerRow = sheet.createRow(0)
-        val headers = arrayOf("Datum", "Projekat", "Sati", "Opis")
-        headers.forEachIndexed { index, header ->
-            val cell = headerRow.createCell(index)
-            cell.setCellValue(header)
-            cell.cellStyle = headerStyle
-        }
-
-        val allHours = database.projekatDao().sviSatiZaPeriod(startOfMonth, endOfMonth)
-        val projekti = database.projekatDao().dohvatiSve().associateBy { it.id }
-
-        allHours.sortedByDescending { it.datum }.forEachIndexed { index, sat ->
-            val row = sheet.createRow(index + 1)
-            row.createCell(0).setCellValue(dateFormat.format(Date(sat.datum)))
-            row.createCell(1).setCellValue(projekti[sat.projekatId]?.naziv ?: "Nepoznat")
-            row.createCell(2).setCellValue(sat.brojSati)
-            row.createCell(3).setCellValue(sat.opis)
-        }
-
-        for (i in 0..3) sheet.autoSizeColumn(i)
-    }
-
-    private suspend fun createMonthlyCostsSheet(
-        workbook: Workbook,
-        database: AppDatabase,
-        startOfMonth: Long,
-        endOfMonth: Long
-    ) {
-        val sheet = workbook.createSheet("Troškovi")
-        val headerStyle = createHeaderStyle(workbook)
-
-        val headerRow = sheet.createRow(0)
-        val headers = arrayOf("Datum", "Projekat", "Iznos", "Kategorija", "Opis")
-        headers.forEachIndexed { index, header ->
-            val cell = headerRow.createCell(index)
-            cell.setCellValue(header)
-            cell.cellStyle = headerStyle
-        }
-
-        val allCosts = database.projekatDao().sviTroskoviZaPeriod(startOfMonth, endOfMonth)
-        val projekti = database.projekatDao().dohvatiSve().associateBy { it.id }
-
-        allCosts.sortedByDescending { it.datum }.forEachIndexed { index, trosak ->
-            val row = sheet.createRow(index + 1)
-            row.createCell(0).setCellValue(dateFormat.format(Date(trosak.datum)))
-            row.createCell(1).setCellValue(projekti[trosak.projekatId]?.naziv ?: "Nepoznat")
-            row.createCell(2).setCellValue(trosak.iznos)
-            row.createCell(3).setCellValue(trosak.kategorija)
-            row.createCell(4).setCellValue(trosak.opis)
-        }
-
-        for (i in 0..4) sheet.autoSizeColumn(i)
-    }
-
-    private suspend fun createMonthlyPaymentsSheet(
-        workbook: Workbook,
-        database: AppDatabase,
-        startOfMonth: Long,
-        endOfMonth: Long
-    ) {
-        val sheet = workbook.createSheet("Uplate")
-        val headerStyle = createHeaderStyle(workbook)
-
-        val headerRow = sheet.createRow(0)
-        val headers = arrayOf("Datum", "Projekat", "Iznos", "Opis")
-        headers.forEachIndexed { index, header ->
-            val cell = headerRow.createCell(index)
-            cell.setCellValue(header)
-            cell.cellStyle = headerStyle
-        }
-
-        val allPayments = database.projekatDao().sveUplateZaPeriod(startOfMonth, endOfMonth)
-        val projekti = database.projekatDao().dohvatiSve().associateBy { it.id }
-
-        allPayments.sortedByDescending { it.datum }.forEachIndexed { index, uplata ->
-            val row = sheet.createRow(index + 1)
-            row.createCell(0).setCellValue(dateFormat.format(Date(uplata.datum)))
-            row.createCell(1).setCellValue(projekti[uplata.projekatId]?.naziv ?: "Nepoznat")
-            row.createCell(2).setCellValue(uplata.iznos)
-            row.createCell(3).setCellValue(uplata.opis)
-        }
-
-        for (i in 0..3) sheet.autoSizeColumn(i)
     }
 }

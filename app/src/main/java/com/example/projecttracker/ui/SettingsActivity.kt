@@ -1,13 +1,11 @@
 package com.example.projecttracker.ui
 
-import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.os.Environment
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -24,15 +22,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.core.content.FileProvider
 import com.example.projecttracker.data.AppDatabase
 import com.example.projecttracker.ui.theme.*
-import com.example.projecttracker.utils.BackupInfo
 import com.example.projecttracker.utils.ExcelExporter
-import com.example.projecttracker.utils.GoogleDriveHelper
-import com.google.android.gms.auth.api.signin.GoogleSignIn
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -41,7 +40,9 @@ class SettingsActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             ProjectTrackerTheme {
-                SettingsScreen(onBack = { finish() })
+                SettingsScreen(
+                    onBackClick = { finish() }
+                )
             }
         }
     }
@@ -49,42 +50,51 @@ class SettingsActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(
+    onBackClick: () -> Unit
+) {
     val context = LocalContext.current
-    val authViewModel: AuthViewModel = viewModel()
-    val authState by authViewModel.authState.collectAsState()
     val scope = rememberCoroutineScope()
-
-    var isLoading by remember { mutableStateOf(false) }
-    var loadingMessage by remember { mutableStateOf("") }
+    var isExporting by remember { mutableStateOf(false) }
+    var isBackingUp by remember { mutableStateOf(false) }
     var showMonthPicker by remember { mutableStateOf(false) }
-    var showBackupList by remember { mutableStateOf(false) }
-    var backups by remember { mutableStateOf<List<BackupInfo>>(emptyList()) }
-
-    val signInLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            authViewModel.handleSignInResult(result.data)
-        }
-    }
+    var selectedYear by remember { mutableStateOf(Calendar.getInstance().get(Calendar.YEAR)) }
+    var selectedMonth by remember { mutableStateOf(Calendar.getInstance().get(Calendar.MONTH)) }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Podešavanja", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Nazad")
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = Surface.copy(alpha = 0.95f),
+                shadowElevation = 8.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onBackClick) {
+                            Icon(
+                                Icons.Default.ArrowBack,
+                                contentDescription = "Nazad",
+                                tint = TextPrimary
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Podešavanja",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Surface,
-                    titleContentColor = TextPrimary
-                )
-            )
+                }
+            }
         },
-        containerColor = SurfaceDark
+        containerColor = Background
     ) { padding ->
         Column(
             modifier = Modifier
@@ -94,154 +104,89 @@ fun SettingsScreen(onBack: () -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Google Account sekcija
-            SettingsSection(title = "Google Nalog") {
-                if (authState.isSignedIn) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = authState.userName ?: "Korisnik",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
-                            )
-                            Text(
-                                text = authState.userEmail ?: "",
-                                fontSize = 14.sp,
-                                color = TextSecondary
-                            )
-                        }
-                        TextButton(onClick = { authViewModel.signOut() }) {
-                            Text("Odjavi se", color = GoldPrimary)
-                        }
-                    }
-                } else {
-                    SettingsButton(
-                        icon = Icons.Default.Person,
-                        title = "Prijavi se sa Google",
-                        subtitle = "Potrebno za backup i izvještaje",
-                        onClick = { signInLauncher.launch(authViewModel.getSignInIntent()) }
-                    )
-                }
-            }
-
-            // Backup sekcija
-            SettingsSection(title = "Backup & Restore") {
-                SettingsButton(
-                    icon = Icons.Default.CloudUpload,
-                    title = "Backup na Google Drive",
-                    subtitle = "Sačuvaj bazu podataka u cloud",
-                    enabled = authState.isSignedIn && !isLoading,
-                    onClick = {
-                        scope.launch {
-                            isLoading = true
-                            loadingMessage = "Pravim backup..."
-                            
-                            val account = GoogleSignIn.getLastSignedInAccount(context)
-                            if (account != null) {
-                                val driveHelper = GoogleDriveHelper(context)
-                                val dbFile = context.getDatabasePath("project_tracker_db")
-                                
-                                val result = driveHelper.backupDatabase(dbFile, account)
-                                result.fold(
-                                    onSuccess = {
-                                        Toast.makeText(context, "Backup uspješan!", Toast.LENGTH_SHORT).show()
-                                    },
-                                    onFailure = {
-                                        Toast.makeText(context, "Greška: ${it.message}", Toast.LENGTH_LONG).show()
-                                    }
-                                )
-                            }
-                            isLoading = false
-                        }
-                    }
-                )
-
-                SettingsButton(
-                    icon = Icons.Default.CloudDownload,
-                    title = "Restore iz backup-a",
-                    subtitle = "Vrati podatke iz cloud-a",
-                    enabled = authState.isSignedIn && !isLoading,
-                    onClick = {
-                        scope.launch {
-                            isLoading = true
-                            loadingMessage = "Učitavam backup-e..."
-                            
-                            val account = GoogleSignIn.getLastSignedInAccount(context)
-                            if (account != null) {
-                                val driveHelper = GoogleDriveHelper(context)
-                                val result = driveHelper.listBackups(account)
-                                result.fold(
-                                    onSuccess = { list ->
-                                        backups = list
-                                        showBackupList = true
-                                    },
-                                    onFailure = {
-                                        Toast.makeText(context, "Greška: ${it.message}", Toast.LENGTH_LONG).show()
-                                    }
-                                )
-                            }
-                            isLoading = false
-                        }
-                    }
-                )
-            }
-
-            // Izvještaji sekcija
-            SettingsSection(title = "Izvještaji") {
-                SettingsButton(
-                    icon = Icons.Default.Description,
-                    title = "Mjesečni izvještaj",
-                    subtitle = "Generiši Excel i upload na Drive",
-                    enabled = authState.isSignedIn && !isLoading,
+            // Export Section
+            SettingsSection(title = "Export") {
+                SettingsCard(
+                    icon = Icons.Default.TableChart,
+                    title = "Izvezi mesečni izveštaj",
+                    description = "Kreiraj Excel fajl sa podacima za izabrani mesec",
+                    isLoading = isExporting,
                     onClick = { showMonthPicker = true }
                 )
             }
 
-            // Loading indicator
-            if (isLoading) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Surface)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = GoldPrimary
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(loadingMessage, color = TextSecondary)
+            // Backup Section
+            SettingsSection(title = "Backup") {
+                SettingsCard(
+                    icon = Icons.Default.Backup,
+                    title = "Napravi backup",
+                    description = "Sačuvaj bazu podataka lokalno",
+                    isLoading = isBackingUp,
+                    onClick = {
+                        scope.launch {
+                            isBackingUp = true
+                            try {
+                                val result = createLocalBackup(context as ComponentActivity)
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, result, Toast.LENGTH_LONG).show()
+                                }
+                            } catch (e: Exception) {
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, "Greška: ${e.message}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                            isBackingUp = false
+                        }
                     }
-                }
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                SettingsCard(
+                    icon = Icons.Default.Restore,
+                    title = "Vrati backup",
+                    description = "Učitaj prethodno sačuvanu bazu",
+                    onClick = {
+                        scope.launch {
+                            try {
+                                val result = restoreLocalBackup(context as ComponentActivity)
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, result, Toast.LENGTH_LONG).show()
+                                }
+                            } catch (e: Exception) {
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, "Greška: ${e.message}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    }
+                )
             }
 
-            // Info
-            if (!authState.isSignedIn) {
+            // Info Section
+            SettingsSection(title = "Informacije") {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = BrownLight.copy(alpha = 0.3f))
+                    colors = CardDefaults.cardColors(containerColor = CardBackground),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier.padding(16.dp)
                     ) {
-                        Icon(
-                            Icons.Default.Info,
-                            contentDescription = null,
-                            tint = GoldPrimary
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            "Prijavi se sa Google nalogom za korištenje backup-a i izvještaja.",
+                            text = "Project Tracker",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = "Verzija 1.0",
+                            fontSize = 14.sp,
+                            color = TextSecondary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Aplikacija za praćenje projekata, radnih sati, troškova i uplata.",
                             fontSize = 14.sp,
                             color = TextSecondary
                         )
@@ -251,77 +196,120 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
     }
 
-    // Month picker dialog
+    // Month Picker Dialog
     if (showMonthPicker) {
-        MonthPickerDialog(
-            onDismiss = { showMonthPicker = false },
-            onMonthSelected = { year, month ->
-                showMonthPicker = false
-                scope.launch {
-                    isLoading = true
-                    loadingMessage = "Generiram izvještaj..."
-                    
-                    val account = GoogleSignIn.getLastSignedInAccount(context)
-                    if (account != null) {
-                        val database = AppDatabase.getInstance(context)
-                        val exporter = ExcelExporter(context)
-                        val driveHelper = GoogleDriveHelper(context)
-                        
-                        try {
-                            val file = exporter.exportMonthlyReport(year, month, database)
-                            loadingMessage = "Upload na Drive..."
-                            
-                            val monthYear = "${year}_${String.format("%02d", month)}"
-                            val result = driveHelper.uploadExcelReport(file, account, monthYear)
-                            
-                            result.fold(
-                                onSuccess = { link ->
-                                    Toast.makeText(context, "Izvještaj uploadovan!", Toast.LENGTH_SHORT).show()
-                                },
-                                onFailure = {
-                                    Toast.makeText(context, "Greška: ${it.message}", Toast.LENGTH_LONG).show()
-                                }
-                            )
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "Greška: ${e.message}", Toast.LENGTH_LONG).show()
+        AlertDialog(
+            onDismissRequest = { showMonthPicker = false },
+            containerColor = CardBackground,
+            title = {
+                Text("Izaberi mesec", color = TextPrimary)
+            },
+            text = {
+                Column {
+                    // Year selector
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { selectedYear-- }) {
+                            Icon(Icons.Default.ChevronLeft, "Prethodna godina", tint = GoldPrimary)
+                        }
+                        Text(
+                            text = selectedYear.toString(),
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        IconButton(onClick = { selectedYear++ }) {
+                            Icon(Icons.Default.ChevronRight, "Sledeća godina", tint = GoldPrimary)
                         }
                     }
-                    isLoading = false
-                }
-            }
-        )
-    }
 
-    // Backup list dialog
-    if (showBackupList) {
-        BackupListDialog(
-            backups = backups,
-            onDismiss = { showBackupList = false },
-            onRestore = { backup ->
-                showBackupList = false
-                scope.launch {
-                    isLoading = true
-                    loadingMessage = "Restoriram backup..."
-                    
-                    val account = GoogleSignIn.getLastSignedInAccount(context)
-                    if (account != null) {
-                        val driveHelper = GoogleDriveHelper(context)
-                        val dbFile = context.getDatabasePath("project_tracker_db")
-                        
-                        // Zatvori bazu prije restore-a
-                        AppDatabase.closeDatabase()
-                        
-                        val result = driveHelper.restoreDatabase(backup.id, dbFile, account)
-                        result.fold(
-                            onSuccess = {
-                                Toast.makeText(context, "Restore uspješan! Restartuj app.", Toast.LENGTH_LONG).show()
-                            },
-                            onFailure = {
-                                Toast.makeText(context, "Greška: ${it.message}", Toast.LENGTH_LONG).show()
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Month grid
+                    val months = listOf(
+                        "Jan", "Feb", "Mar", "Apr", "Maj", "Jun",
+                        "Jul", "Avg", "Sep", "Okt", "Nov", "Dec"
+                    )
+
+                    Column {
+                        for (row in 0..3) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                for (col in 0..2) {
+                                    val monthIndex = row * 3 + col
+                                    val isSelected = monthIndex == selectedMonth
+
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(4.dp),
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isSelected) GoldPrimary else CardBackground,
+                                        onClick = { selectedMonth = monthIndex }
+                                    ) {
+                                        Text(
+                                            text = months[monthIndex],
+                                            modifier = Modifier.padding(12.dp),
+                                            color = if (isSelected) Background else TextPrimary,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    }
+                                }
                             }
-                        )
+                        }
                     }
-                    isLoading = false
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showMonthPicker = false
+                        scope.launch {
+                            isExporting = true
+                            try {
+                                val db = AppDatabase.getInstance(context)
+                                val exporter = ExcelExporter(context)
+                                val file = exporter.exportMonthlyReportInstance(
+                                    year = selectedYear,
+                                    month = selectedMonth,
+                                    database = db
+                                )
+
+                                withContext(Dispatchers.Main) {
+                                    // Share the file
+                                    val uri = FileProvider.getUriForFile(
+                                        context,
+                                        "${context.packageName}.fileprovider",
+                                        file
+                                    )
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                        putExtra(Intent.EXTRA_STREAM, uri)
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(Intent.createChooser(shareIntent, "Podeli izveštaj"))
+                                }
+                            } catch (e: Exception) {
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, "Greška: ${e.message}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                            isExporting = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary)
+                ) {
+                    Text("Izvezi", color = Background)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMonthPicker = false }) {
+                    Text("Otkaži", color = TextSecondary)
                 }
             }
         )
@@ -337,64 +325,75 @@ fun SettingsSection(
         Text(
             text = title,
             fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.Medium,
             color = GoldPrimary,
-            modifier = Modifier.padding(bottom = 8.dp)
+            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
         )
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Surface)
-        ) {
-            Column(
-                modifier = Modifier.padding(8.dp),
-                content = content
-            )
-        }
+        content()
     }
 }
 
 @Composable
-fun SettingsButton(
+fun SettingsCard(
     icon: ImageVector,
     title: String,
-    subtitle: String,
-    enabled: Boolean = true,
+    description: String,
+    isLoading: Boolean = false,
     onClick: () -> Unit
 ) {
-    Surface(
-        onClick = onClick,
-        enabled = enabled,
+    Card(
         modifier = Modifier.fillMaxWidth(),
-        color = Surface,
-        shape = RoundedCornerShape(12.dp)
+        colors = CardDefaults.cardColors(containerColor = CardBackground),
+        shape = RoundedCornerShape(12.dp),
+        onClick = { if (!isLoading) onClick() }
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = if (enabled) GoldPrimary else TextDisabled,
-                modifier = Modifier.size(28.dp)
-            )
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(
+                        color = GoldPrimary.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = GoldPrimary,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        tint = GoldPrimary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.width(16.dp))
+
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium,
-                    color = if (enabled) TextPrimary else TextDisabled
+                    color = TextPrimary
                 )
                 Text(
-                    text = subtitle,
-                    fontSize = 12.sp,
+                    text = description,
+                    fontSize = 13.sp,
                     color = TextSecondary
                 )
             }
+
             Icon(
                 Icons.Default.ChevronRight,
                 contentDescription = null,
@@ -404,135 +403,57 @@ fun SettingsButton(
     }
 }
 
-@Composable
-fun MonthPickerDialog(
-    onDismiss: () -> Unit,
-    onMonthSelected: (Int, Int) -> Unit
-) {
-    val calendar = Calendar.getInstance()
-    var selectedYear by remember { mutableStateOf(calendar.get(Calendar.YEAR)) }
-    var selectedMonth by remember { mutableStateOf(calendar.get(Calendar.MONTH) + 1) }
+// Backup funkcije
+private suspend fun createLocalBackup(context: ComponentActivity): String {
+    return withContext(Dispatchers.IO) {
+        val dbFile = context.getDatabasePath("project_tracker_db")
+        if (!dbFile.exists()) {
+            return@withContext "Baza podataka ne postoji"
+        }
 
-    val months = listOf(
-        "Januar", "Februar", "Mart", "April", "Maj", "Jun",
-        "Jul", "Avgust", "Septembar", "Oktobar", "Novembar", "Decembar"
-    )
+        // Close database before copying
+        AppDatabase.closeDatabase()
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Odaberi mjesec", fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                // Godina
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = { selectedYear-- }) {
-                        Icon(Icons.Default.ChevronLeft, contentDescription = "Prethodna")
-                    }
-                    Text(
-                        text = selectedYear.toString(),
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    IconButton(onClick = { selectedYear++ }) {
-                        Icon(Icons.Default.ChevronRight, contentDescription = "Sljedeća")
-                    }
-                }
+        val backupDir = File(context.getExternalFilesDir(null), "backups")
+        if (!backupDir.exists()) backupDir.mkdirs()
 
-                Spacer(modifier = Modifier.height(16.dp))
+        val dateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
+        val backupFile = File(backupDir, "backup_${dateFormat.format(Date())}.db")
 
-                // Mjeseci u gridu
-                Column {
-                    for (row in 0..3) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            for (col in 0..2) {
-                                val monthIndex = row * 3 + col + 1
-                                FilterChip(
-                                    selected = selectedMonth == monthIndex,
-                                    onClick = { selectedMonth = monthIndex },
-                                    label = { Text(months[monthIndex - 1].take(3)) },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = GoldPrimary,
-                                        selectedLabelColor = SurfaceDark
-                                    )
-                                )
-                            }
-                        }
-                    }
-                }
+        FileInputStream(dbFile).use { input ->
+            FileOutputStream(backupFile).use { output ->
+                input.copyTo(output)
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onMonthSelected(selectedYear, selectedMonth) },
-                colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary)
-            ) {
-                Text("Generiši", color = SurfaceDark, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Otkaži", color = TextSecondary)
-            }
-        },
-        containerColor = Surface
-    )
+        }
+
+        "Backup sačuvan: ${backupFile.name}"
+    }
 }
 
-@Composable
-fun BackupListDialog(
-    backups: List<BackupInfo>,
-    onDismiss: () -> Unit,
-    onRestore: (BackupInfo) -> Unit
-) {
-    val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
+private suspend fun restoreLocalBackup(context: ComponentActivity): String {
+    return withContext(Dispatchers.IO) {
+        val backupDir = File(context.getExternalFilesDir(null), "backups")
+        if (!backupDir.exists() || backupDir.listFiles()?.isEmpty() != false) {
+            return@withContext "Nema dostupnih backup fajlova"
+        }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Odaberi backup", fontWeight = FontWeight.Bold) },
-        text = {
-            if (backups.isEmpty()) {
-                Text("Nema dostupnih backup-a.", color = TextSecondary)
-            } else {
-                Column {
-                    backups.forEach { backup ->
-                        Surface(
-                            onClick = { onRestore(backup) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            color = BrownLight.copy(alpha = 0.3f),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Text(
-                                    text = backup.name,
-                                    fontWeight = FontWeight.Medium,
-                                    color = TextPrimary
-                                )
-                                Text(
-                                    text = dateFormat.format(Date(backup.createdTime)),
-                                    fontSize = 12.sp,
-                                    color = TextSecondary
-                                )
-                            }
-                        }
-                    }
-                }
+        val backupFiles = backupDir.listFiles()?.filter { it.extension == "db" }?.sortedByDescending { it.lastModified() }
+        if (backupFiles.isNullOrEmpty()) {
+            return@withContext "Nema dostupnih backup fajlova"
+        }
+
+        val latestBackup = backupFiles.first()
+        val dbFile = context.getDatabasePath("project_tracker_db")
+
+        // Close database before restoring
+        AppDatabase.closeDatabase()
+
+        FileInputStream(latestBackup).use { input ->
+            FileOutputStream(dbFile).use { output ->
+                input.copyTo(output)
             }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Zatvori", color = TextSecondary)
-            }
-        },
-        containerColor = Surface
-    )
+        }
+
+        "Backup vraćen: ${latestBackup.name}"
+    }
 }

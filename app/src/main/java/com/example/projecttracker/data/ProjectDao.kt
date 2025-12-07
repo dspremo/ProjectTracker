@@ -10,6 +10,9 @@ interface ProjekatDao {
     @Query("SELECT * FROM projekti ORDER BY sortOrder ASC, datumPocetka DESC")
     fun sviProjekti(): Flow<List<Projekat>>
 
+    @Query("SELECT * FROM projekti ORDER BY sortOrder ASC, datumPocetka DESC")
+    suspend fun sviProjektiList(): List<Projekat>
+
     @Query("SELECT * FROM projekti WHERE id = :id")
     suspend fun projekatPoId(id: Long): Projekat?
 
