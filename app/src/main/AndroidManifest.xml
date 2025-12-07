@@ -33,5 +33,9 @@
             android:name=".ui.StatistikaActivity"
             android:theme="@style/Theme.ProjectTracker" />
 
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:theme="@style/Theme.ProjectTracker" />
+
     </application>
 </manifest>
