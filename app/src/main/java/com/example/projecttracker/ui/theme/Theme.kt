@@ -23,6 +23,8 @@ val GoldBright = Color(0xFFFFC107)
 val SurfaceDark = Color(0xFF1C1410)
 val Surface = Color(0xFF2D1E18)
 val SurfaceLight = Color(0xFF3E2A20)
+val Background = SurfaceDark
+val CardBackground = Surface
 
 // Tekstovi
 val TextPrimary = Color(0xFFF5E6D3)
